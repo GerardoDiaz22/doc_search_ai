@@ -1,30 +1,64 @@
 import pymupdf
 import spacy
-from spacy.lang.es.examples import sentences 
+import re
 
-# Load spaCy spanish model
+
+# Load spaCy Spanish model
 nlp = spacy.load("es_core_news_sm")
 
-doc = pymupdf.open("my_pdf.pdf") # open a document
-out = open("output.txt", "w", encoding="utf-8") # create a text output
-for page in doc: # iterate the document pages
-    text = page.get_text() # get plain text (is in UTF-8)
-    # Process the text using spaCy
+
+def get_text_from_pdf(pdf_path):
+    # Open the PDF file
+    pdf_doc = pymupdf.open(pdf_path)
+
+    # Initialize an empty string to store the intermediate text
+    pdf_text = ""
+
+    # Iterate over all pages in the document
+    for page in pdf_doc:
+        # Get plain text of the page
+        text = page.get_text()
+
+        # Append the text to the intermediate string
+        pdf_text += text
+
+        # Write the page break character
+        # TODO: Maybe adding this character is not necessary for the model
+        pdf_text += chr(12)
+
+    # Close the PDF file
+    pdf_doc.close()
+
+    return pdf_text
+
+
+def clean_text(text):
+    # Eliminación de caracteres especiales usando expresiones regulares.
+    # Elimina todo lo que no sea alfanumérico o espacio.
+    text = re.sub(r"[^\w\s]", "", text)
+
+    # Conversión a minúsculas
     text = text.lower()
-    doc_final = nlp(text)
-    
-    # Remove stopwords
-    filtered_words = [token.text for token in doc_final if not token.is_stop]
-    
-    # Join the filtered words to form a clean text
-    clean_text = ' '.join(filtered_words)
-    
-    print("Original Text:", text)
-    print("Original Text: --------------------------------------------------------------")
 
-    print("Text after Stopword Removal:", clean_text)
+    # Tokenización y lematización con spaCy
+    spacy_doc = nlp(text)
 
-    out.write(clean_text) # write text of page
-    out.write(bytes((12,))) # write page delimiter (form feed 0x0C)
+    # Eliminación de stopwords y lematización
+    tokens = [token.lemma_ for token in spacy_doc if not token.is_stop]
 
+    # Unir los tokens limpios
+    return " ".join(tokens)
+
+
+pdf_text = get_text_from_pdf("my_pdf.pdf")
+
+cleaned_text = clean_text(pdf_text)
+
+# Create a file to write the text to
+out = open("output.txt", "wb")
+
+# Write the text to the output file
+out.write(cleaned_text.encode("utf8"))
+
+# Close the output file
 out.close()
