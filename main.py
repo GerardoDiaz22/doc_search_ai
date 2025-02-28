@@ -1,6 +1,5 @@
 import pymupdf
 import spacy
-import re
 
 
 # Load spaCy Spanish model
@@ -33,25 +32,28 @@ def get_text_from_pdf(pdf_path):
 
 
 def clean_text(text):
-    # Eliminación de caracteres especiales usando expresiones regulares.
-    # Elimina todo lo que no sea alfanumérico o espacio.
-    text = re.sub(r"[^\w\s]", "", text)
-
-    # Conversión a minúsculas
+    # Convert to lowercase
     text = text.lower()
 
-    # Tokenización y lematización con spaCy
+    # Tokenization with spaCy
     spacy_doc = nlp(text)
 
-    # Eliminación de stopwords y lematización
-    tokens = [token.lemma_ for token in spacy_doc if not token.is_stop]
+    # Stopword removal and lemmatization
+    tokens = [
+        token.lemma_
+        for token in spacy_doc
+        if not token.is_stop and (token.is_alpha or token.is_digit)
+    ]
+    print(tokens)
 
-    # Unir los tokens limpios
+    # Join the cleaned tokens
     return " ".join(tokens)
 
 
+# STEP 1.1: Read the PDF file
 pdf_text = get_text_from_pdf("my_pdf.pdf")
 
+# STEP 1.2: Remove special characters, convert to lowercase, remove stopwords, tokenize and lemmatize
 cleaned_text = clean_text(pdf_text)
 
 # Create a file to write the text to
