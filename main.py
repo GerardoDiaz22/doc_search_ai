@@ -2,6 +2,7 @@ import pymupdf
 import spacy
 import os
 from rank_bm25 import BM25Okapi
+import numpy as np
 
 
 # Load spaCy Spanish model
@@ -71,6 +72,51 @@ def read_text_from_file(file_name):
     return text
 
 
+def tf(term, doc):
+    return doc.count(term)
+
+
+def idf(term, corpus):
+    N = len(corpus)
+    df = sum([1 for doc in corpus if term in doc])
+    if df == 0:
+        return 0
+    else:
+        return np.log(N / df)
+
+
+def get_tf_idf_score(query, corpus):
+    scores = []
+    for doc in corpus:
+        score = 0
+        for term in query:
+            tf_score = tf(term, doc)
+            idf_score = idf(term, corpus)
+            score += tf_score * idf_score
+        scores.append(score)
+    return scores
+
+
+def get_avg_doc_length(corpus):
+    return sum([len(doc) for doc in corpus]) / len(corpus)
+
+
+def get_bm25_score(query, corpus, k, b):
+    scores = []
+    avg_doc_length = get_avg_doc_length(corpus)
+    for doc in corpus:
+        score = 0
+        for term in query:
+            tf_score = tf(term, doc)
+            idf_score = idf(term, corpus)
+            theta = len(doc) / avg_doc_length
+            score += (
+                idf_score * (tf_score * (k + 1)) / (tf_score + k * (1 - b + b * theta))
+            )
+        scores.append(score)
+    return scores
+
+
 def sorted_indices_by_value(vector):
     # Create a list of tuples (value, index)
     indexed_vector = list(enumerate(vector))
@@ -123,9 +169,12 @@ bm25 = BM25Okapi(corpus_tokens)
 query = "mejores juegos rpg y acción"
 tokenized_query = tokenize_clean_text(query)
 
-# STEP 4: Rank the documents
-doc_scores = bm25.get_scores(tokenized_query)
-sorted_indices_np = sorted_indices_by_value(doc_scores)
+# STEP 4: Rank the documents with bm25
+k = 1.5
+b = 0.75
+doc_scores = get_bm25_score(tokenized_query, corpus_tokens, k, b)
+sorted_indices = sorted_indices_by_value(doc_scores)
+print(doc_scores, sorted_indices)
 
-for i, doc_index in enumerate(sorted_indices_np):
+for i, doc_index in enumerate(sorted_indices):
     print(f"Rank: {i}, Document: {corpus_doc_paths[doc_index]}")
