@@ -1,5 +1,6 @@
 import pymupdf
 import spacy
+import os
 
 
 # Load spaCy Spanish model
@@ -44,23 +45,55 @@ def clean_text(text):
         for token in spacy_doc
         if not token.is_stop and (token.is_alpha or token.is_digit)
     ]
-    print(tokens)
 
     # Join the cleaned tokens
     return " ".join(tokens)
 
 
-# STEP 1.1: Read the PDF file
-pdf_text = get_text_from_pdf("my_pdf.pdf")
+def write_text_to_file(file_name, text):
+    # Create a file to write the text to
+    out = open(os.path.join(OUTPUT_PATH, file_name), "wb")
 
-# STEP 1.2: Remove special characters, convert to lowercase, remove stopwords, tokenize and lemmatize
-cleaned_text = clean_text(pdf_text)
+    # Write the text to the output file
+    out.write(text.encode("utf8"))
 
-# Create a file to write the text to
-out = open("output.txt", "wb")
+    # Close the output file
+    out.close()
 
-# Write the text to the output file
-out.write(cleaned_text.encode("utf8"))
 
-# Close the output file
-out.close()
+def read_text_from_file(file_name):
+    # Open the file
+    with open(file_name, "r", encoding="utf-8") as file:
+        # Read the text
+        text = file.read()
+
+    return text
+
+
+# Main
+
+DOCS_PATH = "docs"
+OUTPUT_PATH = "output"
+
+corpus = []
+
+for file_name in os.listdir(DOCS_PATH):
+    # Construct the full file path
+    full_path = os.path.join(DOCS_PATH, file_name)
+
+    # Check if it's a pdf file
+    if file_name.endswith(".pdf"):
+        # STEP 1.1: Read the PDF file
+        pdf_text = get_text_from_pdf(full_path)
+
+        # STEP 1.2: Remove special characters, convert to lowercase, remove stopwords, tokenize and lemmatize
+        cleaned_text = clean_text(pdf_text)
+
+        # STEP 1.3: Write the cleaned text to a file
+        output_file_name = file_name.replace(".pdf", ".txt")
+        write_text_to_file(output_file_name, cleaned_text)
+
+        # STEP 2.1: Append the text to the corpus
+        corpus.append(cleaned_text)
+
+print(corpus)
