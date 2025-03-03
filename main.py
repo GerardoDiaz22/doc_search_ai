@@ -1,6 +1,7 @@
 import pymupdf
 import spacy
 import os
+from rank_bm25 import BM25Okapi
 
 
 # Load spaCy Spanish model
@@ -32,7 +33,7 @@ def get_text_from_pdf(pdf_path):
     return pdf_text
 
 
-def clean_text(text):
+def tokenize_clean_text(text):
     # Convert to lowercase
     text = text.lower()
 
@@ -46,8 +47,8 @@ def clean_text(text):
         if not token.is_stop and (token.is_alpha or token.is_digit)
     ]
 
-    # Join the cleaned tokens
-    return " ".join(tokens)
+    # Return the tokens
+    return tokens
 
 
 def write_text_to_file(file_name, text):
@@ -87,13 +88,14 @@ for file_name in os.listdir(DOCS_PATH):
         pdf_text = get_text_from_pdf(full_path)
 
         # STEP 1.2: Remove special characters, convert to lowercase, remove stopwords, tokenize and lemmatize
-        cleaned_text = clean_text(pdf_text)
+        pdf_tokens = tokenize_clean_text(pdf_text)
 
         # STEP 1.3: Write the cleaned text to a file
         output_file_name = file_name.replace(".pdf", ".txt")
-        write_text_to_file(output_file_name, cleaned_text)
+        clean_text = " ".join(pdf_tokens)
+        write_text_to_file(output_file_name, clean_text)
 
         # STEP 2.1: Append the text to the corpus
-        corpus.append(cleaned_text)
+        corpus.append(pdf_tokens)
 
 print(corpus)
