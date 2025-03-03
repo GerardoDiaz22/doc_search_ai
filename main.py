@@ -71,12 +71,26 @@ def read_text_from_file(file_name):
     return text
 
 
+def sorted_indices_by_value(vector):
+    # Create a list of tuples (value, index)
+    indexed_vector = list(enumerate(vector))
+
+    # Sort the vector based on values in descending order
+    sorted_vector = sorted(indexed_vector, key=lambda x: x[1], reverse=True)
+
+    # Extract the sorted indices
+    sorted_indices = [index for index, value in sorted_vector]
+
+    return sorted_indices
+
+
 # Main
 
 DOCS_PATH = "docs"
 OUTPUT_PATH = "output"
 
-corpus = []
+corpus_doc_paths = []
+corpus_tokens = []
 
 for file_name in os.listdir(DOCS_PATH):
     # Construct the full file path
@@ -95,7 +109,23 @@ for file_name in os.listdir(DOCS_PATH):
         clean_text = " ".join(pdf_tokens)
         write_text_to_file(output_file_name, clean_text)
 
-        # STEP 2.1: Append the text to the corpus
-        corpus.append(pdf_tokens)
+        # STEP 2.1: Append the tokens to the corpus
+        corpus_tokens.append(pdf_tokens)
 
-print(corpus)
+        # STEP 2.2: Save the path to the document
+        corpus_doc_paths.append(output_file_name)
+
+
+# STEP 2.3: Create the BM25 model
+bm25 = BM25Okapi(corpus_tokens)
+
+# STEP 3: Read the query from the user
+query = "mejores juegos rpg y acción"
+tokenized_query = tokenize_clean_text(query)
+
+# STEP 4: Rank the documents
+doc_scores = bm25.get_scores(tokenized_query)
+sorted_indices_np = sorted_indices_by_value(doc_scores)
+
+for i, doc_index in enumerate(sorted_indices_np):
+    print(f"Rank: {i}, Document: {corpus_doc_paths[doc_index]}")
