@@ -1,8 +1,8 @@
 import pymupdf
 import spacy
 import os
-from rank_bm25 import BM25Okapi
 import numpy as np
+import streamlit as st
 
 
 # Load spaCy Spanish model
@@ -52,9 +52,9 @@ def tokenize_clean_text(text):
     return tokens
 
 
-def write_text_to_file(file_name, text):
+def write_text_to_file(file_name, text, output_path):
     # Create a file to write the text to
-    out = open(os.path.join(OUTPUT_PATH, file_name), "wb")
+    out = open(os.path.join(output_path, file_name), "wb")
 
     # Write the text to the output file
     out.write(text.encode("utf8"))
@@ -130,51 +130,68 @@ def sorted_indices_by_value(vector):
     return sorted_indices
 
 
+def handle_corpus_from_docs(docs_path, output_path):
+    corpus_doc_paths = []
+    corpus_tokens = []
+    for file_name in os.listdir(docs_path):
+        # Construct the full file path
+        full_path = os.path.join(docs_path, file_name)
+
+        # Check if it's a pdf file
+        if file_name.endswith(".pdf"):
+            # STEP 1.1: Read the PDF file
+            pdf_text = get_text_from_pdf(full_path)
+
+            # STEP 1.2: Remove special characters, convert to lowercase, remove stopwords, tokenize and lemmatize
+            pdf_tokens = tokenize_clean_text(pdf_text)
+
+            # STEP 1.3: Write the cleaned text to a file
+            output_file_name = file_name.replace(".pdf", ".txt")
+            clean_text = " ".join(pdf_tokens)
+            write_text_to_file(output_file_name, clean_text, output_path)
+
+            # STEP 2.1: Append the tokens to the corpus
+            corpus_tokens.append(pdf_tokens)
+
+            # STEP 2.2: Save the path to the document
+            corpus_doc_paths.append(output_file_name)
+
+    return corpus_doc_paths, corpus_tokens
+
+
 # Main
 
-DOCS_PATH = "docs"
-OUTPUT_PATH = "output"
 
-corpus_doc_paths = []
-corpus_tokens = []
+def main():
+    st.title("Buscador de Documentos")
 
-for file_name in os.listdir(DOCS_PATH):
-    # Construct the full file path
-    full_path = os.path.join(DOCS_PATH, file_name)
+    # STEP 1-2: Read the documents, handle them and create the corpus
+    corpus_doc_paths, corpus_tokens = handle_corpus_from_docs("docs", "output")
 
-    # Check if it's a pdf file
-    if file_name.endswith(".pdf"):
-        # STEP 1.1: Read the PDF file
-        pdf_text = get_text_from_pdf(full_path)
+    # STEP 3: Read the query from the user
+    query = st.text_input("Buscar:", placeholder="Ingrese un término de búsqueda...")
+    tokenized_query = tokenize_clean_text(query)
 
-        # STEP 1.2: Remove special characters, convert to lowercase, remove stopwords, tokenize and lemmatize
-        pdf_tokens = tokenize_clean_text(pdf_text)
+    # STEP 4: Rank the documents with bm25
+    if query:
+        k = 1.5
+        b = 0.75
+        doc_scores = get_bm25_score(tokenized_query, corpus_tokens, k, b)
+        sorted_indices = sorted_indices_by_value(doc_scores)
 
-        # STEP 1.3: Write the cleaned text to a file
-        output_file_name = file_name.replace(".pdf", ".txt")
-        clean_text = " ".join(pdf_tokens)
-        write_text_to_file(output_file_name, clean_text)
+        # STEP 5: Display the results
+        results = [corpus_doc_paths[index] for index in sorted_indices]
+        st.write(f"Se han encontrado {len(results)} resultados:")
 
-        # STEP 2.1: Append the tokens to the corpus
-        corpus_tokens.append(pdf_tokens)
+        if results:
+            for result in results:
+                st.markdown(f"- {result}")
+        else:
+            st.write("No se encontraron resultados.")
 
-        # STEP 2.2: Save the path to the document
-        corpus_doc_paths.append(output_file_name)
+    else:
+        st.write("Ingrese un término de búsqueda para comenzar.")
 
 
-# STEP 2.3: Create the BM25 model
-bm25 = BM25Okapi(corpus_tokens)
-
-# STEP 3: Read the query from the user
-query = "mejores juegos rpg y acción"
-tokenized_query = tokenize_clean_text(query)
-
-# STEP 4: Rank the documents with bm25
-k = 1.5
-b = 0.75
-doc_scores = get_bm25_score(tokenized_query, corpus_tokens, k, b)
-sorted_indices = sorted_indices_by_value(doc_scores)
-print(doc_scores, sorted_indices)
-
-for i, doc_index in enumerate(sorted_indices):
-    print(f"Rank: {i}, Document: {corpus_doc_paths[doc_index]}")
+if __name__ == "__main__":
+    main()
