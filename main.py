@@ -102,32 +102,37 @@ def get_avg_doc_length(corpus):
 
 
 def get_bm25_score(query, corpus, k, b):
-    scores = []
+    doc_ranking = []
     avg_doc_length = get_avg_doc_length(corpus)
     for doc in corpus:
-        score = 0
+        doc_score = 0
+        highest_term_score = 0
+        best_term = None
         for term in query:
             tf_score = tf(term, doc)
             idf_score = idf(term, corpus)
             theta = len(doc) / avg_doc_length
-            score += (
+            term_score = (
                 idf_score * (tf_score * (k + 1)) / (tf_score + k * (1 - b + b * theta))
             )
-        scores.append(score)
-    return scores
+            doc_score += term_score
+            if term_score > highest_term_score:
+                highest_term_score = term_score
+                best_term = term
+        doc_ranking.append({"score": doc_score, "best_term": best_term})
+    return doc_ranking
 
 
 def sorted_indices_by_value(vector):
-    # Create a list of tuples (value, index)
-    indexed_vector = list(enumerate(vector))
-
     # Sort the vector based on values in descending order
-    sorted_vector = sorted(indexed_vector, key=lambda x: x[1], reverse=True)
+    sorted_vector = sorted(vector, key=lambda x: x["score"], reverse=True)
 
-    # Extract the sorted indices
-    sorted_indices = [index for index, value in sorted_vector]
+    sorted_vector_with_indices = []
+    for item in sorted_vector:
+        item["index"] = vector.index(item)
+        sorted_vector_with_indices.append(item)
 
-    return sorted_indices
+    return sorted_vector_with_indices
 
 
 def handle_corpus_from_docs(docs_path, output_path):
@@ -161,6 +166,30 @@ def handle_corpus_from_docs(docs_path, output_path):
     return corpus_doc_paths, corpus_tokens
 
 
+def snippets_from_docs(doc_info):
+    snippets = []
+    for doc_path, best_token in doc_info:
+        # Read the text from the document
+        text = read_text_from_file(doc_path)
+
+        # Tokenize the text
+        doc_tokens = tokenize_clean_text(text)
+
+        # Find the index of the first occurrence of the query in the document
+        try:
+            query_index = doc_tokens.index(best_token)
+        except ValueError:
+            query_index = 0
+
+        # Get the snippet
+        snippet = doc_tokens[query_index : query_index + 5]
+
+        # Append the snippet to the list
+        snippets.append(" ".join(snippet))
+
+    return snippets
+
+
 # Main
 
 
@@ -168,6 +197,7 @@ def main():
     st.title("Buscador de Documentos")
 
     # STEP 1-2: Read the documents, handle them and create the corpus
+    # NOTE: This could be break down into two or more functions for readability, but for better performance i'll keep it as is
     corpus_doc_paths, corpus_tokens = handle_corpus_from_docs("docs", "output")
 
     # STEP 3: Read the query from the user
@@ -178,16 +208,28 @@ def main():
     if tokenized_query:
         k = 1.5
         b = 0.75
-        doc_scores = get_bm25_score(tokenized_query, corpus_tokens, k, b)
-        sorted_indices = sorted_indices_by_value(doc_scores)
+        doc_ranking = get_bm25_score(tokenized_query, corpus_tokens, k, b)
+        sorted_docs = sorted_indices_by_value(doc_ranking)
 
         # STEP 5: Display the results
-        results = [corpus_doc_paths[index] for index in sorted_indices]
+        doc_info = [
+            (corpus_doc_paths[doc["index"]], doc["best_term"]) for doc in sorted_docs
+        ]
+
+        # NOTE: This also could be done above, but lets just do it here so it's easier to understand the flow of the algorithm
+        text_snippets = snippets_from_docs(doc_info)
+
+        results = []
+        for (doc_path, _), snippet in zip(doc_info, text_snippets):
+            results.append({"doc_path": doc_path, "snippet": snippet})
+
         st.write(f"Se han encontrado {len(results)} resultados:")
 
         if results:
             for result in results:
-                st.markdown(f"- {result}")
+                st.write(f"Documento: {result['doc_path']}")
+                st.write(f"{result['snippet']}")
+                st.write("----")
         else:
             st.write("No se encontraron resultados.")
 
