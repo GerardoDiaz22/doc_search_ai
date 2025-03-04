@@ -52,9 +52,9 @@ def tokenize_clean_text(text):
     return tokens
 
 
-def write_text_to_file(file_name, text, output_path):
+def write_text_to_file(file_path, text):
     # Create a file to write the text to
-    out = open(os.path.join(output_path, file_name), "wb")
+    out = open(file_path, "wb")
 
     # Write the text to the output file
     out.write(text.encode("utf8"))
@@ -146,15 +146,17 @@ def handle_corpus_from_docs(docs_path, output_path):
             pdf_tokens = tokenize_clean_text(pdf_text)
 
             # STEP 1.3: Write the cleaned text to a file
-            output_file_name = file_name.replace(".pdf", ".txt")
+            output_file_path = os.path.join(
+                output_path, file_name.replace(".pdf", ".txt")
+            )
             clean_text = " ".join(pdf_tokens)
-            write_text_to_file(output_file_name, clean_text, output_path)
+            write_text_to_file(output_file_path, clean_text)
 
             # STEP 2.1: Append the tokens to the corpus
             corpus_tokens.append(pdf_tokens)
 
             # STEP 2.2: Save the path to the document
-            corpus_doc_paths.append(output_file_name)
+            corpus_doc_paths.append(output_file_path)
 
     return corpus_doc_paths, corpus_tokens
 
@@ -173,7 +175,7 @@ def main():
     tokenized_query = tokenize_clean_text(query)
 
     # STEP 4: Rank the documents with bm25
-    if query:
+    if tokenized_query:
         k = 1.5
         b = 0.75
         doc_scores = get_bm25_score(tokenized_query, corpus_tokens, k, b)
