@@ -3,10 +3,65 @@ import spacy
 import os
 import numpy as np
 import streamlit as st
+from collections import defaultdict
 
 
 # Load spaCy Spanish model
 nlp = spacy.load("es_core_news_sm")
+
+
+# Increase the limit to 2,000,000 characters
+nlp.max_length = 2000000 
+
+
+def build_term_frequency_matrix(corpus_tokens):
+
+    #Build a matrix representing the table of word values ​​in cosine metrics
+
+    # get all unique terms in the corpus
+    all_terms = set(term for doc_tokens in corpus_tokens for term in doc_tokens)
+
+    all_terms = list(all_terms)
+
+
+    # Create a term-frequency matrix for each document in the corpus
+    num_docs = len(corpus_tokens)
+    num_terms = len(all_terms)
+
+    tf_matrix = np.zeros((num_docs, num_terms), dtype=int)
+
+    # Fill the matrix with the frequencies of the terms
+    term_to_index = {term: i for i, term in enumerate(all_terms)}
+
+    for doc_idx, doc_tokens in enumerate(corpus_tokens):
+        term_counts = defaultdict(int)
+        for term in doc_tokens:
+            term_counts[term] += 1
+        for term, count in term_counts.items():
+            tf_matrix[doc_idx, term_to_index[term]] = count
+
+    return tf_matrix
+
+
+#makes use of the cosine metric formula
+def cosine_similarity(matrix, query_vector):
+
+    dot_product = np.dot(matrix, query_vector)
+
+    matrix_norms = np.linalg.norm(matrix, axis=1)
+    query_norm = np.linalg.norm(query_vector)
+
+   # Calculate cosine similarity
+    similarities = dot_product / (matrix_norms * query_norm)
+    return similarities
+
+def get_cosine_similarities(selected_doc_index, tf_matrix):
+
+    # Get the vector of the selected document
+    selected_doc_vector = tf_matrix[selected_doc_index]
+
+    similarities = cosine_similarity(tf_matrix, selected_doc_vector)
+    return similarities
 
 
 def get_text_from_pdf(pdf_path):
@@ -200,6 +255,9 @@ def main():
     # NOTE: This could be break down into two or more functions for readability, but for better performance i'll keep it as is
     corpus_doc_paths, corpus_tokens = handle_corpus_from_docs("docs", "output")
 
+     # STEP 2.1: Build the term-frequency matrix
+    tf_matrix = build_term_frequency_matrix(corpus_tokens)
+
     # STEP 3: Read the query from the user
     query = st.text_input("Buscar:", placeholder="Ingrese un término de búsqueda...")
     tokenized_query = tokenize_clean_text(query)
@@ -229,10 +287,27 @@ def main():
             for result in results:
                 st.write(f"Documento: {result['doc_path']}")
                 st.write(f"{result['snippet']}")
+
+                # STEP 6: Recommend similar documents
+                st.write("##### Documentos Similares")
+                 #  Get index of the current document
+                current_doc_index = corpus_doc_paths.index(result['doc_path'])
+
+                #Calculate similarities based on the current document
+                similarities = get_cosine_similarities(current_doc_index, tf_matrix)
+                similar_docs = sorted(
+                    zip(corpus_doc_paths, similarities), key=lambda x: x[1], reverse=True
+                )
+
+                # Excludes the current document and displays the 3 most similar ones
+                for doc_path, similarity in similar_docs[1:4]:
+                    st.write(
+                        f"Documento: {doc_path} | Similitud del coseno: {similarity:.3f}"
+                    )
                 st.write("----")
+
         else:
             st.write("No se encontraron resultados.")
-
     else:
         st.write("Ingrese un término de búsqueda para comenzar.")
 
