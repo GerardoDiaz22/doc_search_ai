@@ -1,9 +1,6 @@
 from classes import Corpus, QueriedBM25Corpus, QueriedDocument
 import streamlit as st
 
-# TODO: change all the by_name handlings to use by_index or by_id
-# TODO: change the QueriedDocument to save the (token, score) pair
-
 
 def main():
     st.title("Buscador de Documentos")
