@@ -5,12 +5,60 @@ import streamlit as st
 def main():
     st.title("Buscador de Documentos")
 
-    # Initialize the corpus
-    corpus = Corpus()
-    corpus.add_docs_from_directory("docs/")
+    # Initialize session state
+    if "setup_complete" not in st.session_state:
+        st.session_state.setup_complete = False
 
-    # Write docs to directory
-    corpus.write_docs_to_directory("output/")
+    # Phase 1: Initialization
+
+    if not st.session_state.setup_complete:
+        st.write("**Configuración del sistema**")
+        st.write(
+            "Por favor, haga clic en el botón para iniciar la configuración del sistema. Puede tardar unos minutos dependiendo de la cantidad de documentos que tenga."
+        )
+        if st.button("Iniciar Configuración"):
+            # Create a status container and progress bar
+            with st.status(
+                "Configurando sistema, por favor espere...", expanded=True
+            ) as status:
+                # Initialize progress bar
+                progress_bar = st.progress(0, text="Inicializando corpus...")
+
+                # Initialize the corpus
+                corpus = Corpus()
+
+                # Store corpus in session state
+                st.session_state.corpus = corpus
+
+                # Update progress bar
+                progress_bar.progress(25, text="Cargando documentos...")
+
+                # Add documents to the corpus
+                corpus.add_docs_from_directory("docs/")
+
+                # Update progress bar
+                progress_bar.progress(75, text="Escribiendo documentos...")
+
+                # Write docs to directory
+                corpus.write_docs_to_directory("output/")
+
+                # HERE WOULD BE THE CLUSTERING PHASE
+                # REMEMBER TO UPDATE THE PROGRESS BAR
+
+                # Complete setup
+                progress_bar.progress(100, text="Configuración completada!")
+                status.update(
+                    label="Configuración completada!", state="complete", expanded=False
+                )
+
+            st.session_state.setup_complete = True
+            st.rerun()
+        return
+
+    # Get corpus from session state
+    corpus = st.session_state.corpus
+
+    # Phase 2: Querying
 
     # Read the query from the user
     query_text = st.text_input(
@@ -26,6 +74,8 @@ def main():
 
     # Build the term frequency matrix
     tf_matrix = queried_corpus.get_tf_matrix()
+
+    # Phase 3: Displaying Results
 
     # Get the documents sorted by score
     documents_by_score: list[QueriedDocument] = queried_corpus.get_documents_by_score()
