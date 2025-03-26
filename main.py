@@ -1,4 +1,4 @@
-from classes import Corpus, QueriedBM25Corpus, QueriedDocument
+from classes import Corpus, QueriedBM25Corpus, QueriedDocument, Document
 import streamlit as st
 
 
@@ -103,7 +103,7 @@ def main():
         progress_bar.progress(60, text="Buscando documentos similares...")
 
         # Get similarities for each document
-        similar_docs_list = []
+        similar_docs_list: list[list[Document]] = []
         for document in documents_by_score:
             doc_index = queried_corpus.get_corpus().get_document_index_by_id(
                 document.get_document().get_id()
