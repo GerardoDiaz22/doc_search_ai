@@ -37,8 +37,8 @@ def main():
         for document in documents_by_score:
             similar_docs = queried_corpus.get_similar_documents(
                 tf_matrix[
-                    queried_corpus.get_corpus().get_index_by_name(
-                        document.get_document().get_name()
+                    queried_corpus.get_corpus().get_document_index_by_id(
+                        document.get_document().get_id()
                     )
                 ]
             )
@@ -49,7 +49,7 @@ def main():
                 st.write(f"{document.get_document().get_path()}")
                 # Snippet of the document
                 st.write(
-                    f"{queried_corpus.get_snippet_from_doc_by_score(document.get_document().get_name())}"
+                    f"{queried_corpus.get_document_snippet_by_id(document.get_document().get_id())}"
                 )
 
                 # Similar documents

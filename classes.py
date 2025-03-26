@@ -1,6 +1,7 @@
 import pymupdf
 import os
 import numpy as np
+import uuid
 from utils import tokenize_and_clean_text, bm25_score
 
 
@@ -11,6 +12,7 @@ class Document:
 
         self.path_to_document: str = path_to_document
         self.name: str = path_to_document.split("/")[-1].split(".")[0]
+        self.id: str = str(uuid.uuid4())
         self.text: str | None = None
         self.tokens: list[str] | None = None
 
@@ -37,6 +39,9 @@ class Document:
 
     def get_name(self) -> str:
         return self.name
+
+    def get_id(self) -> str:
+        return self.id
 
     def write_tokens_to_path(self, path_to_output: str) -> None:
         try:
@@ -136,17 +141,29 @@ class Corpus:
 
             for document in self.documents:
                 # Construct the full path to the output file
-                path_to_output = os.path.join(path_to_dir, document.get_name() + ".txt")
+                path_to_output = os.path.join(
+                    path_to_dir, document.get_name() + "." + document.get_id() + ".txt"
+                )
                 # Write the document tokens to the output file
                 document.write_tokens_to_path(path_to_output)
         except Exception as e:
             print(f"An error occurred: {e}")
 
-    def get_index_by_name(self, name: str) -> int | None:
+    def get_document_by_id(self, document_id: str) -> Document | None:
         try:
-            for i, document in enumerate(self.documents):
-                if document.get_name() == name:
-                    return i
+            for document in self.documents:
+                if document.get_id() == document_id:
+                    return document
+            return None
+        except Exception as e:
+            print(f"An error occurred: {e}")
+            return None
+
+    def get_document_index_by_id(self, document_id: str) -> int | None:
+        try:
+            for index, document in enumerate(self.documents):
+                if document.get_id() == document_id:
+                    return index
             return None
         except Exception as e:
             print(f"An error occurred: {e}")
@@ -280,19 +297,20 @@ class QueriedBM25Corpus:
             print(f"An error occurred: {e}")
             return None
 
-    def get_snippet_from_doc_by_score(self, name: str) -> str | None:
+    def get_document_snippet_by_id(self, document_id: str) -> str | None:
         try:
             TOKEN_RANGE = 5
 
-            doc_index = self.corpus.get_index_by_name(name)
+            # Get the index of the document in the corpus
+            doc_index = self.corpus.get_document_index_by_id(document_id)
 
             # Check if the document exists in the corpus
             if doc_index is None:
                 raise ValueError(
-                    f"Document with name '{name}' not found in the corpus."
+                    f"Document with ID '{document_id}' not found in the corpus."
                 )
 
-            # Get the document by name
+            # Get the document by index
             queried_document: QueriedDocument = self.queried_documents[doc_index]
 
             # Get top scoring token
