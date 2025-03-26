@@ -4,6 +4,7 @@ import numpy as np
 import uuid
 import shutil
 from utils import tokenize_and_clean_text, bm25_score
+from collections import defaultdict, Counter
 
 
 class Document:
@@ -279,26 +280,56 @@ class QueriedBM25Corpus:
                 corpus_tokens_by_docs: list[list[str]] = (
                     self.corpus.get_tokens_by_docs()
                 )
+                num_docs = len(corpus_tokens_by_docs)
                 avg_doc_length = self.corpus.get_avg_doc_length()
-                unique_corpus_tokens = set(
-                    token for doc in corpus_tokens_by_docs for token in doc
+
+                # Map each token to an array of indices of documents containing it
+                token_to_doc_indices = defaultdict(set)
+                for index, tokens in enumerate(corpus_tokens_by_docs):
+                    for token in tokens:
+                        token_to_doc_indices[token].add(index)
+
+                unique_corpus_tokens = sorted(token_to_doc_indices.keys())
+                num_tokens = len(unique_corpus_tokens)
+
+                # Calculate the IDF vector using the BM25 Okapi formula
+                df_vector = np.array(
+                    [len(docs) for docs in token_to_doc_indices.values()],
+                    dtype=np.float32,
+                )
+                idf_vector = np.log(
+                    ((num_docs - df_vector + 0.5) / (df_vector + 0.5)) + 1
                 )
 
-                tf_matrix = np.zeros(
-                    (len(self.corpus.documents), len(unique_corpus_tokens)), dtype=int
+                # Calculate the TF matrix
+                tf_matrix = np.zeros((num_docs, num_tokens), dtype=np.float32)
+
+                # Map tokens to their "supposed" indices
+                token_to_index = {
+                    token: index for index, token in enumerate(unique_corpus_tokens)
+                }
+
+                # Fill the TF matrix with token counts
+                for index, tokens in enumerate(corpus_tokens_by_docs):
+                    token_counter = Counter(tokens)
+                    for token, count in token_counter.items():
+                        tf_matrix[index, token_to_index[token]] = count
+
+                # Calculate length for all documents
+                doc_lengths_vector = np.array(
+                    [len(doc) for doc in corpus_tokens_by_docs], dtype=np.float32
                 )
 
-                for i, document in enumerate(self.corpus.documents):
-                    for j, token in enumerate(unique_corpus_tokens):
-                        tf_matrix[i][j] = bm25_score(
-                            token,
-                            document.get_tokens(),
-                            corpus_tokens_by_docs,
-                            avg_doc_length,
-                            self.k,
-                            self.b,
-                        )
-                self.tf_matrix = tf_matrix.tolist()
+                # Vectorized BM25 calculation
+                theta_vector = doc_lengths_vector / avg_doc_length
+
+                denominator = tf_matrix + (
+                    self.k * (1 - self.b + self.b * theta_vector)
+                ).reshape(-1, 1)
+
+                bm25_matrix = idf_vector * ((tf_matrix * (self.k + 1)) / denominator)
+
+                self.tf_matrix = bm25_matrix.tolist()
             return self.tf_matrix
         except Exception as e:
             print(f"An error occurred: {e}")
