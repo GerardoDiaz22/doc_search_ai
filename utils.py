@@ -2,7 +2,12 @@ import spacy
 import numpy as np
 
 # Load spaCy Spanish model
-nlp = spacy.load("es_core_news_sm")
+nlp = spacy.load(
+    "es_core_news_sm", disable=["parser", "ner", "attribute_ruler", "tok2vec"]
+)
+
+# Configuration the nlp model
+nlp.max_length = 2000000
 
 
 def tokenize_and_clean_text(text: str) -> list[str]:

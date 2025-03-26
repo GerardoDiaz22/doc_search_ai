@@ -20,19 +20,35 @@ class Document:
     def get_path(self) -> str:
         return self.path_to_document
 
-    def get_text(self) -> str | None:
+    def setup_text(self) -> None:
         try:
             if self.text is None:
                 self.text = self._read_text_from_pdf(self.path_to_document)
+        except Exception as e:
+            print(f"An error occurred: {e}")
+            self.text = None
+
+    def get_text(self) -> str | None:
+        try:
+            if self.text is None:
+                self.setup_text()
             return self.text
         except Exception as e:
             print(f"An error occurred: {e}")
             return None
 
-    def get_tokens(self) -> list[str] | None:
+    def setup_tokens(self) -> None:
         try:
             if self.tokens is None:
                 self.tokens = tokenize_and_clean_text(self.get_text())
+        except Exception as e:
+            print(f"An error occurred: {e}")
+            self.tokens = None
+
+    def get_tokens(self) -> list[str] | None:
+        try:
+            if self.tokens is None:
+                self.setup_tokens()
             return self.tokens
         except Exception as e:
             print(f"An error occurred: {e}")
@@ -54,26 +70,21 @@ class Document:
     @staticmethod
     def _read_text_from_pdf(path_to_pdf: str) -> str | None:
         try:
+            # Initialize an empty list to store text from each page
+            text_list = []
+
             # Open the PDF file
-            pdf_doc = pymupdf.open(path_to_pdf)
+            with pymupdf.open(path_to_pdf) as pdf_doc:
+                for page in pdf_doc:
+                    # Extract text from the page
+                    text_list.append(page.get_text())
 
-            # Initialize an empty string to store the intermediate text
-            pdf_text = ""
+                    # Write the page break character
+                    # TODO: Maybe adding this character is not necessary for the model
+                    text_list.append(chr(12))
 
-            # Iterate over all pages in the document
-            for page in pdf_doc:
-                # Get plain text of the page
-                text = page.get_text()
-
-                # Append the text to the intermediate string
-                pdf_text += text
-
-                # Write the page break character
-                # TODO: Maybe adding this character is not necessary for the model
-                pdf_text += chr(12)
-
-            # Close the PDF file
-            pdf_doc.close()
+                # Join the text from all pages into a single string
+                pdf_text = "".join(text_list)
 
             return pdf_text
         except pymupdf.FileNotFoundError:
@@ -151,6 +162,20 @@ class Corpus:
                 )
                 # Write the document tokens to the output file
                 document.write_tokens_to_path(path_to_output)
+        except Exception as e:
+            print(f"An error occurred: {e}")
+
+    def setup_document_texts(self) -> None:
+        try:
+            for document in self.documents:
+                document.setup_text()
+        except Exception as e:
+            print(f"An error occurred: {e}")
+
+    def setup_document_tokens(self) -> None:
+        try:
+            for document in self.documents:
+                document.setup_tokens()
         except Exception as e:
             print(f"An error occurred: {e}")
 

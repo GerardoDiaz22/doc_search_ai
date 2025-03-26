@@ -31,10 +31,19 @@ def main():
                 st.session_state.corpus = corpus
 
                 # Update progress bar
-                progress_bar.progress(25, text="Cargando documentos...")
+                progress_bar.progress(25, text="Leyendo documentos...")
 
                 # Add documents to the corpus
                 corpus.add_docs_from_directory("docs/")
+
+                # Setup texts for the documents
+                corpus.setup_document_texts()
+
+                # Update progress bar
+                progress_bar.progress(50, text="Procesando documentos...")
+
+                # Setup tokens for the documents
+                corpus.setup_document_tokens()
 
                 # Update progress bar
                 progress_bar.progress(75, text="Escribiendo documentos...")
