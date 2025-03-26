@@ -2,6 +2,7 @@ import pymupdf
 import os
 import numpy as np
 import uuid
+import shutil
 from utils import tokenize_and_clean_text, bm25_score
 
 
@@ -136,8 +137,12 @@ class Corpus:
 
     def write_docs_to_directory(self, path_to_dir: str) -> None:
         try:
-            if not os.path.exists(path_to_dir):
-                os.makedirs(path_to_dir)
+            # Remove the existing directory and all its contents
+            if os.path.exists(path_to_dir):
+                shutil.rmtree(path_to_dir)
+
+            # Create a fresh directory
+            os.makedirs(path_to_dir)
 
             for document in self.documents:
                 # Construct the full path to the output file
