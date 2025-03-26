@@ -154,15 +154,24 @@ class Corpus:
 
 
 class QueriedDocument:
-    def __init__(self, document: Document, score: float):
+    def __init__(
+        self,
+        document: Document,
+        score: float,
+        token_score_pairs: list[tuple[str, float]],
+    ):
         self.document: Document = document
         self.score: float = score
+        self.token_score_pairs: list[tuple[str, float]] = token_score_pairs
 
     def get_document(self) -> Document:
         return self.document
 
     def get_score(self) -> float:
         return self.score
+
+    def get_token_score_pairs(self) -> list[tuple[str, float]]:
+        return self.token_score_pairs
 
 
 class QueriedBM25Corpus:
@@ -184,6 +193,7 @@ class QueriedBM25Corpus:
 
         for document in self.corpus.documents:
             document_score = 0
+            token_score_pairs = []
             for token in self.get_query_tokens():
                 token_score = bm25_score(
                     token,
@@ -194,7 +204,10 @@ class QueriedBM25Corpus:
                     self.b,
                 )
                 document_score += token_score
-            self.queried_documents.append(QueriedDocument(document, document_score))
+                token_score_pairs.append((token, token_score))
+            self.queried_documents.append(
+                QueriedDocument(document, document_score, token_score_pairs)
+            )
 
     def get_query_tokens(self) -> list[str]:
         try:
@@ -267,29 +280,50 @@ class QueriedBM25Corpus:
             print(f"An error occurred: {e}")
             return None
 
-    # TODO: This function is not working as expected, is not using the actual query tokens
-    def get_snippet_from_doc_by_score(self, name: str) -> str:
+    def get_snippet_from_doc_by_score(self, name: str) -> str | None:
         try:
-            document: Document = self.corpus.get_documents()[
-                self.corpus.get_index_by_name(name)
-            ]
-            top_score = [None, 0]
-            for i, token in enumerate(document.get_tokens()):
-                token_score = bm25_score(
-                    token,
-                    document.get_tokens(),
-                    self.corpus.get_tokens_by_docs(),
-                    self.corpus.get_avg_doc_length(),
-                    self.k,
-                    self.b,
+            TOKEN_RANGE = 5
+
+            doc_index = self.corpus.get_index_by_name(name)
+
+            # Check if the document exists in the corpus
+            if doc_index is None:
+                raise ValueError(
+                    f"Document with name '{name}' not found in the corpus."
                 )
-                if token_score > top_score[1]:
-                    top_score = [i, token_score]
-            return document.get_tokens()[
-                max(0, top_score[0] - 5) : min(
-                    len(document.get_tokens()), top_score[0] + 5
-                )
-            ]
+
+            # Get the document by name
+            queried_document: QueriedDocument = self.queried_documents[doc_index]
+
+            # Get top scoring token
+            top_token, _ = max(
+                queried_document.get_token_score_pairs(),
+                key=lambda pair: pair[1],
+                default=(None, 0),
+            )
+
+            doc_tokens = queried_document.get_document().get_tokens()
+
+            # NOTE: Not a fan of this part, but its quicker than checking if the token is in the document
+
+            # Get the index of the top scoring token in the document
+            try:
+                top_token_index = doc_tokens.index(top_token)
+            except ValueError:
+                top_token_index = -1
+
+            # Get the snippet of text around the top scoring token with the token highlighted
+
+            start = max(0, top_token_index - TOKEN_RANGE)
+            end = min(len(doc_tokens), top_token_index + TOKEN_RANGE)
+
+            return " ".join(
+                [
+                    f"**{token}**" if (start + i) == top_token_index else token
+                    for i, token in enumerate(doc_tokens[start:end])
+                ]
+            )
+
         except Exception as e:
             print(f"An error occurred: {e}")
             return None
