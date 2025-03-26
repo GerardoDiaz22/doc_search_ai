@@ -11,3 +11,4 @@
 - [ ] Add env variable handling for dev and prod # Gerardo
 - [ ] Add clean text before lemmatization to the document class # Gerardo
 - [ ] Check how are words with accents being handled by the tokenizer # Gerardo
+- [ ] Add more aggresive tokenization # Gerardo
