@@ -78,43 +78,73 @@ def main():
         st.write("Por favor, ingrese un término de búsqueda.")
         return
 
-    # Query the corpus
-    queried_corpus = QueriedBM25Corpus(corpus, query_text, k=1.5, b=0.75)
+    with st.status("Procesando consulta...", expanded=True) as status:
+        # Initialize progress bar
+        progress_bar = st.progress(0, text="Consultando corpus...")
 
-    # Build the term frequency matrix
-    tf_matrix = queried_corpus.get_tf_matrix()
+        # Query the corpus
+        queried_corpus = QueriedBM25Corpus(corpus, query_text, k=1.5, b=0.75)
+
+        # Update progress bar
+        progress_bar.progress(20, text="Organizando documentos...")
+
+        # Get the documents sorted by score
+        documents_by_score: list[QueriedDocument] = (
+            queried_corpus.get_documents_by_score()
+        )
+
+        # Update progress bar
+        progress_bar.progress(40, text="Calculando matriz de frecuencia...")
+
+        # Build the term frequency matrix
+        tf_matrix = queried_corpus.get_tf_matrix()
+
+        # Update progress bar
+        progress_bar.progress(60, text="Buscando documentos similares...")
+
+        # Get similarities for each document
+        similar_docs_list = []
+        for document in documents_by_score:
+            doc_index = queried_corpus.get_corpus().get_document_index_by_id(
+                document.get_document().get_id()
+            )
+            similar_docs = queried_corpus.get_similar_documents(tf_matrix[doc_index])
+            similar_docs_list.append(similar_docs)
+
+        # Update progress bar
+        progress_bar.progress(80, text="Generando snippets...")
+
+        # Generate snippets for the documents
+        snippets = []
+        for document in documents_by_score:
+            snippet = queried_corpus.get_document_snippet_by_id(
+                document.get_document().get_id()
+            )
+            snippets.append(snippet)
+
+        # Complete querying
+        progress_bar.progress(100, text="Consulta completada!")
+        status.update(label="Consulta completada!", state="complete", expanded=False)
 
     # Phase 3: Displaying Results
-
-    # Get the documents sorted by score
-    documents_by_score: list[QueriedDocument] = queried_corpus.get_documents_by_score()
 
     # Display the results
     st.write(f"Se han encontrado {len(documents_by_score)} resultados:")
 
     if documents_by_score:
-        for document in documents_by_score:
-            similar_docs = queried_corpus.get_similar_documents(
-                tf_matrix[
-                    queried_corpus.get_corpus().get_document_index_by_id(
-                        document.get_document().get_id()
-                    )
-                ]
-            )
+        for i, document in enumerate(documents_by_score):
             with st.container():
                 # Name of the document
                 st.write(f"**{document.get_document().get_name()}**")
                 # File path of the document
                 st.write(f"{document.get_document().get_path()}")
                 # Snippet of the document
-                st.write(
-                    f"{queried_corpus.get_document_snippet_by_id(document.get_document().get_id())}"
-                )
+                st.write(f"{snippets[i]}")
 
                 # Similar documents
                 st.write(
                     f"Similares: {
-                    ', '.join([doc.get_name() for doc in similar_docs][1:])
+                    ', '.join([doc.get_name() for doc in similar_docs_list[i]][1:5])
                 }"
                 )
                 st.markdown("---")
