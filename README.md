@@ -8,3 +8,4 @@
 - [ ] Improve UI
 - [ ] Add metrics to evaluate the performance of the model # Gerardo
 - [ ] Write report document # Jose
+- [ ] Add env variable handling for dev and prod # Gerardo
