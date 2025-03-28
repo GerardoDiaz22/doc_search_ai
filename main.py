@@ -1,16 +1,4 @@
-import pymupdf
-import os
-import numpy as np
-import uuid
-import shutil
-from utils import tokenize_and_clean_text, bm25_score
-from collections import defaultdict, Counter
-from sklearn.cluster import KMeans
-from sklearn.feature_extraction.text import TfidfVectorizer
-from typing import List, Dict, Tuple, Optional
-from classes import *
-
-# This is main.py, modified to integrate clustering.
+from classes import Corpus, QueriedBM25Corpus, QueriedDocument, Document
 import streamlit as st
 
 
@@ -43,7 +31,7 @@ def main():
                 st.session_state.corpus = corpus
 
                 # Update progress bar
-                progress_bar.progress(20, text="Leyendo documentos...")
+                progress_bar.progress(25, text="Leyendo documentos...")
 
                 # Add documents to the corpus
                 corpus.add_docs_from_directory("docs/")
@@ -52,23 +40,19 @@ def main():
                 corpus.setup_document_texts()
 
                 # Update progress bar
-                progress_bar.progress(40, text="Procesando documentos...")
+                progress_bar.progress(50, text="Procesando documentos...")
 
                 # Setup tokens for the documents
                 corpus.setup_document_tokens()
 
                 # Update progress bar
-                progress_bar.progress(60, text="Clustering documentos...") # UPDATED PROGRESS BAR
-
-                # CLUSTERING PHASE
-                corpus.cluster_documents()  # You can adjust the number of clusters
-                st.session_state.corpus = corpus # Update the session state after clustering.
-
-                # Update progress bar
-                progress_bar.progress(80, text="Escribiendo documentos...")
+                progress_bar.progress(75, text="Escribiendo documentos...")
 
                 # Write docs to directory
                 corpus.write_docs_to_directory("output/")
+
+                # HERE WOULD BE THE CLUSTERING PHASE
+                # REMEMBER TO UPDATE THE PROGRESS BAR
 
                 # Complete setup
                 progress_bar.progress(100, text="Configuración completada!")
@@ -98,22 +82,11 @@ def main():
         # Initialize progress bar
         progress_bar = st.progress(0, text="Consultando corpus...")
 
-        # Predict the cluster for the query
-        predicted_cluster_id = corpus.predict_cluster_for_query(query_text)
+        # Query the corpus
+        queried_corpus = QueriedBM25Corpus(corpus, query_text, k=1.5, b=0.75)
 
         # Update progress bar
-        progress_bar.progress(10, text="Prediciendo cluster...")
-
-        if predicted_cluster_id is not None:
-            st.write(f"Buscando en el clúster: {predicted_cluster_id}")
-        else:
-            st.write("No se pudo predecir el clúster. Buscando en todos los documentos.")
-
-        # Query the corpus, now taking into account the predicted cluster.
-        queried_corpus = QueriedBM25Corpus(corpus, query_text, k=1.5, b=0.75, predicted_cluster_id=predicted_cluster_id) #PASS THE CLUSTER ID
-
-        # Update progress bar
-        progress_bar.progress(30, text="Organizando documentos...")
+        progress_bar.progress(20, text="Organizando documentos...")
 
         # Get the documents sorted by score
         documents_by_score: list[QueriedDocument] = (
@@ -121,34 +94,25 @@ def main():
         )
 
         # Update progress bar
-        progress_bar.progress(50, text="Calculando matriz de frecuencia...")
+        progress_bar.progress(40, text="Calculando matriz de frecuencia...")
 
         # Build the term frequency matrix
         tf_matrix = queried_corpus.get_tf_matrix()
 
         # Update progress bar
-        progress_bar.progress(70, text="Buscando documentos similares...")
+        progress_bar.progress(60, text="Buscando documentos similares...")
 
         # Get similarities for each document
         similar_docs_list: list[list[Document]] = []
-        if tf_matrix is not None: #Check tf_matrix
-            for document in documents_by_score:
-                doc_id = document.get_document().get_id()
-                doc_index = queried_corpus.get_corpus().get_document_index_by_id(doc_id)
-                if doc_index is not None and doc_index < len(tf_matrix):  # Ensure index is valid
-                        query_vector = tf_matrix[doc_index]
-                        similar_docs = queried_corpus.get_similar_documents(query_vector)
-                        if similar_docs is not None:
-                            similar_docs_list.append(similar_docs)
-                        else:
-                            similar_docs_list.append([]) # Append an empty list if similar_docs is None
-                else:
-                    similar_docs_list.append([])  # Handle missing document index
-        else:
-           st.error("Failed to compute TF-IDF matrix. Cannot retrieve similar documents.")
+        for document in documents_by_score:
+            doc_index = queried_corpus.get_corpus().get_document_index_by_id(
+                document.get_document().get_id()
+            )
+            similar_docs = queried_corpus.get_similar_documents(tf_matrix[doc_index])
+            similar_docs_list.append(similar_docs)
 
         # Update progress bar
-        progress_bar.progress(90, text="Generando snippets...")
+        progress_bar.progress(80, text="Generando snippets...")
 
         # Generate snippets for the documents
         snippets = []
@@ -178,13 +142,11 @@ def main():
                 st.write(f"{snippets[i]}")
 
                 # Similar documents
-                if i < len(similar_docs_list):  # Make sure index is valid
-                    st.write(
-                        f"Similares: {', '.join([doc.get_name() for doc in similar_docs_list[i][1:5]])}"
-                    )
-                else:
-                    st.write("No similar documents found.")
-
+                st.write(
+                    f"Similares: {
+                    ', '.join([doc.get_name() for doc in similar_docs_list[i]][1:5])
+                }"
+                )
                 st.markdown("---")
     else:
         st.write("No se encontraron resultados.")

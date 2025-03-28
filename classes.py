@@ -5,15 +5,10 @@ import uuid
 import shutil
 from utils import tokenize_and_clean_text, bm25_score
 from collections import defaultdict, Counter
-from sklearn.cluster import KMeans
-from sklearn.feature_extraction.text import TfidfVectorizer
-from typing import List, Dict, Tuple, Optional
-from classes import *
-import matplotlib.pyplot as plt  # Import for the elbow method
 
 
 class Document:
-    def __init__(self, path_to_document: str):
+    def __init__(self, path_to_document):
         if not path_to_document.endswith(".pdf"):
             raise ValueError("The document must be a PDF file")
 
@@ -22,7 +17,6 @@ class Document:
         self.id: str = str(uuid.uuid4())
         self.text: str | None = None
         self.tokens: list[str] | None = None
-        self.cluster_id: Optional[int] = None  # ADDED THIS FIELD
 
     def get_path(self) -> str:
         return self.path_to_document
@@ -74,12 +68,6 @@ class Document:
         except Exception as e:
             print(f"An error occurred: {e}")
 
-    def set_cluster_id(self, cluster_id: int) -> None:  # ADDED THIS METHOD
-        self.cluster_id = cluster_id
-
-    def get_cluster_id(self) -> Optional[int]:  # ADDED THIS METHOD
-        return self.cluster_id
-
     @staticmethod
     def _read_text_from_pdf(path_to_pdf: str) -> str | None:
         try:
@@ -118,11 +106,6 @@ class Corpus:
     def __init__(self):
         self.documents: list[Document] = []
         self.tokens: list[list[str]] | None = None
-        self.vectorizer: Optional[TfidfVectorizer] = None  # ADDED THIS FIELD
-        self.kmeans_model: Optional[KMeans] = None  # ADDED THIS FIELD
-        self.optimal_n_clusters: Optional[int] = (
-            None  # Store the optimal number of clusters
-        )
 
     def add_document(self, document: Document) -> None:
         self.documents.append(document)
@@ -217,137 +200,6 @@ class Corpus:
             print(f"An error occurred: {e}")
             return None
 
-    def determine_optimal_number_of_clusters(
-        self, tfidf_matrix, max_clusters=10, plot_elbow=False
-    ):
-        """
-        Determines the optimal number of clusters using the elbow method.
-
-        Args:
-            tfidf_matrix: The TF-IDF matrix of the documents.
-            max_clusters: The maximum number of clusters to try.
-            plot_elbow: Whether to plot the elbow graph.
-
-        Returns:
-            The optimal number of clusters.
-        """
-        wcss = []  # Within-cluster sum of squares
-        for i in range(1, max_clusters + 1):
-            kmeans = KMeans(n_clusters=i, random_state=0, n_init=10)
-            kmeans.fit(tfidf_matrix)
-            wcss.append(kmeans.inertia_)
-
-        if plot_elbow:
-            plt.plot(range(1, max_clusters + 1), wcss, marker="o")
-            plt.title("Elbow Method for Optimal k")
-            plt.xlabel("Number of clusters")
-            plt.ylabel("WCSS")
-            plt.show()
-
-        # Implement a more robust elbow detection (e.g., using the rate of change)
-        # This is a simplified approach. More sophisticated methods exist.
-        # Find the "elbow" where the rate of decrease in WCSS slows down significantly
-        elbow_index = 0
-        for i in range(1, len(wcss)):
-            if i > 1 and (wcss[i - 1] - wcss[i]) < 0.1 * (
-                wcss[0] - wcss[1]
-            ):  # Adjust threshold as needed
-                elbow_index = i
-                break
-        else:  # If the loop completes without breaking, it means there's no clear elbow
-            elbow_index = len(wcss) - 1  # Take the last one
-
-        optimal_clusters = elbow_index + 1
-        print(
-            f"Optimal number of clusters determined by elbow method: {optimal_clusters}"
-        )
-        return optimal_clusters
-
-    def cluster_documents(
-        self, n_clusters: Optional[int] = None
-    ) -> None:  # ADDED THIS METHOD
-        """Clusters the documents in the corpus using KMeans, determining the optimal number of clusters using the elbow method if n_clusters is not provided."""
-        try:
-            # 1. Prepare document texts
-            document_tokens = [doc.get_tokens() for doc in self.documents]
-
-            # 2.  Handle None tokens:  Important, skip documents with no tokens.
-            valid_indices = [i for i, tokens in enumerate(document_tokens) if tokens]
-            valid_tokens = [document_tokens[i] for i in valid_indices]
-            valid_documents = [self.documents[i] for i in valid_indices]
-
-            if not valid_tokens:
-                print("Warning: No valid documents found for clustering.")
-                return
-
-            # 3. Vectorize the texts using TF-IDF.  Join the tokens into strings for TF-IDF.
-            self.vectorizer = TfidfVectorizer()
-            tfidf_matrix = self.vectorizer.fit_transform(
-                [" ".join(tokens) for tokens in valid_tokens]
-            )
-
-            # 4. Determine optimal number of clusters if not provided.
-            if n_clusters is None:
-                self.optimal_n_clusters = self.determine_optimal_number_of_clusters(
-                    tfidf_matrix
-                )
-            else:
-                self.optimal_n_clusters = n_clusters  # Use the provided value
-
-            # 5. Run KMeans clustering
-            self.kmeans_model = KMeans(
-                n_clusters=self.optimal_n_clusters, random_state=0, n_init=10
-            )  # Setting n_init explicitly to suppress warning
-            clusters = self.kmeans_model.fit_predict(tfidf_matrix)
-
-            # 6. Assign cluster IDs to the documents (only to the valid ones)
-            for i, cluster_id in enumerate(clusters):
-                valid_documents[i].set_cluster_id(cluster_id)
-
-            print(f"Clustered documents into {self.optimal_n_clusters} clusters.")
-            self.display_cluster_composition()  # CALL THE PRINT FUNCTION
-        except Exception as e:
-            print(f"An error occurred during clustering: {e}")
-
-    def get_documents_by_cluster(
-        self, cluster_id: int
-    ) -> List[Document]:  # ADDED THIS METHOD
-        """Returns a list of documents belonging to a specific cluster."""
-        return [doc for doc in self.documents if doc.get_cluster_id() == cluster_id]
-
-    def predict_cluster_for_query(self, query_text: str) -> Optional[int]:
-        """Predicts the most likely cluster for a given query."""
-        try:
-            if self.vectorizer is None or self.kmeans_model is None:
-                raise ValueError("Corpus must be clustered first.")
-
-            # Vectorize the query using the same vectorizer used for clustering
-            query_vector = self.vectorizer.transform([query_text])
-
-            # Predict the cluster
-            cluster_id = self.kmeans_model.predict(query_vector)[0]
-            return cluster_id
-        except Exception as e:
-            print(f"Error predicting cluster for query: {e}")
-            return None
-
-    def display_cluster_composition(self) -> None:
-        """Prints the documents belonging to each cluster."""
-        if self.kmeans_model is None:
-            print("Corpus must be clustered first.")
-            return
-
-        num_clusters = self.kmeans_model.n_clusters
-        print("\nCluster Composition:")
-        for cluster_id in range(num_clusters):
-            documents_in_cluster = self.get_documents_by_cluster(cluster_id)
-            if documents_in_cluster:
-                print(f"  Cluster {cluster_id}:")
-                for doc in documents_in_cluster:
-                    print(f"    - {doc.get_name()}")  # Print document name or ID
-            else:
-                print(f"  Cluster {cluster_id}: (Empty)")
-
 
 class QueriedDocument:
     def __init__(
@@ -371,14 +223,7 @@ class QueriedDocument:
 
 
 class QueriedBM25Corpus:
-    def __init__(
-        self,
-        corpus: Corpus,
-        query_text: str,
-        k: float,
-        b: float,
-        predicted_cluster_id: Optional[int] = None,
-    ):  # MODIFIED THIS METHOD
+    def __init__(self, corpus: Corpus, query_text: str, k: float, b: float):
         self.query_text: str = query_text
         self.query_tokens: list[str] | None = None
         self.k: float = k
@@ -386,26 +231,15 @@ class QueriedBM25Corpus:
         self.corpus: Corpus = corpus
         self.queried_documents: list[QueriedDocument] = []
         self.tf_matrix = None
-        self.predicted_cluster_id: Optional[int] = (
-            predicted_cluster_id  # ADDED THIS FIELD
-        )
         self._assign_bm25_scores()
 
     def get_corpus(self) -> Corpus:
         return self.corpus
 
-    def _assign_bm25_scores(self) -> None:  # MODIFIED THIS METHOD
+    def _assign_bm25_scores(self) -> float:
         avg_doc_length = self.corpus.get_avg_doc_length()
 
-        # Use only documents from the predicted cluster, if a predicted_cluster_id is provided.
-        if self.predicted_cluster_id is not None:
-            documents_to_search = self.corpus.get_documents_by_cluster(
-                self.predicted_cluster_id
-            )
-        else:
-            documents_to_search = self.corpus.documents
-
-        for document in documents_to_search:
+        for document in self.corpus.documents:
             document_score = 0
             token_score_pairs = []
             for token in self.get_query_tokens():
@@ -446,15 +280,6 @@ class QueriedBM25Corpus:
                 corpus_tokens_by_docs: list[list[str]] = (
                     self.corpus.get_tokens_by_docs()
                 )
-                # Filter tokens to use only tokens from the cluster we're interested in
-                if self.predicted_cluster_id is not None:
-                    documents_in_cluster = self.corpus.get_documents_by_cluster(
-                        self.predicted_cluster_id
-                    )
-                    corpus_tokens_by_docs = [
-                        doc.get_tokens() for doc in documents_in_cluster
-                    ]  # Overwrite with the cluster's docs.
-
                 num_docs = len(corpus_tokens_by_docs)
                 avg_doc_length = self.corpus.get_avg_doc_length()
 
@@ -513,24 +338,10 @@ class QueriedBM25Corpus:
     def get_cosine_similarities(self, query_vector: list[float]) -> list[float]:
         try:
             cosine_similarities = []
-            tf_matrix = self.get_tf_matrix()
-            if tf_matrix is None:
-                return None  # Or handle the error as appropriate
-
-            for doc_vector in tf_matrix:
-                # Handle zero vector
-                doc_vector = np.array(doc_vector)
-                query_vector = np.array(query_vector)
-                norm_doc_vector = np.linalg.norm(doc_vector)
-                norm_query_vector = np.linalg.norm(query_vector)
-
-                if norm_doc_vector == 0 or norm_query_vector == 0:
-                    similarity = 0  # if one of the vector is a zero vector, cosine similarity will be zero.
-                else:
-                    similarity = np.dot(query_vector, doc_vector) / (
-                        norm_query_vector * norm_doc_vector
-                    )
-
+            for doc_vector in self.get_tf_matrix():
+                similarity = np.dot(query_vector, doc_vector) / (
+                    np.linalg.norm(query_vector) * np.linalg.norm(doc_vector)
+                )
                 cosine_similarities.append(similarity)
             return cosine_similarities
         except Exception as e:
@@ -540,31 +351,14 @@ class QueriedBM25Corpus:
     def get_similar_documents(self, query_vector: list[float]) -> list[Document]:
         try:
             cosine_similarities = self.get_cosine_similarities(query_vector)
-            if cosine_similarities is None:
-                return None
-
             sorted_indices = np.argsort(cosine_similarities)[::-1]
-
-            # Ensure you're using the correct document set (clustered or full corpus)
-            if self.predicted_cluster_id is not None:
-                documents_in_cluster = self.corpus.get_documents_by_cluster(
-                    self.predicted_cluster_id
-                )
-            else:
-                documents_in_cluster = self.corpus.documents
-
-            # Retrieve documents based on sorted indices, make sure not to go out of bounds
-            similar_documents = [
-                documents_in_cluster[i]
-                for i in sorted_indices
-                if i < len(documents_in_cluster)
-            ]
+            similar_documents = [self.corpus.documents[i] for i in sorted_indices]
             return similar_documents
         except Exception as e:
             print(f"An error occurred: {e}")
             return None
 
-    def get_document_snippet_by_id(self, document_id: str) -> Optional[str]:
+    def get_document_snippet_by_id(self, document_id: str) -> str | None:
         try:
             TOKEN_RANGE = 5
 
@@ -578,23 +372,7 @@ class QueriedBM25Corpus:
                 )
 
             # Get the document by index
-            # This is where you have to choose between the original docments or the clustered ones.
-            if self.predicted_cluster_id is not None:
-                documents_in_cluster = self.corpus.get_documents_by_cluster(
-                    self.predicted_cluster_id
-                )
-                # Find the index of the document in the cluster's document list
-                try:
-                    # doc_index_in_cluster = next(i for i, doc in enumerate(documents_in_cluster) if doc.get_id() == document_id)
-                    queried_document: QueriedDocument = next(
-                        qd
-                        for qd in self.queried_documents
-                        if qd.document.get_id() == document_id
-                    )
-                except StopIteration:
-                    return "Document not found in cluster"
-            else:
-                queried_document: QueriedDocument = self.queried_documents[doc_index]
+            queried_document: QueriedDocument = self.queried_documents[doc_index]
 
             # Get top scoring token
             top_token, _ = max(
