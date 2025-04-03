@@ -12,3 +12,5 @@
 - [ ] Add clean text before lemmatization to the document class # Gerardo
 - [ ] Check how are words with accents being handled by the tokenizer # Gerardo
 - [ ] Add more aggresive tokenization # Gerardo
+- [ ] Change UI to select a document # Gerardo
+- [ ] Improve performance of get_similar_documents # Gerardo
