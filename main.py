@@ -1,4 +1,4 @@
-from classes import Corpus, QueriedBM25Corpus, QueriedDocument, Document
+from classes import Corpus, QueriedBM25Corpus, QueriedDocument
 import streamlit as st
 
 # Initialize session state
@@ -63,10 +63,10 @@ def initial_config():
         st.rerun()
 
 
-# Phase 2: Querying
 def query_system():
-    # Get corpus from session state
-    corpus = st.session_state.corpus
+    st.button("← Volver", on_click=lambda: st.session_state.update(step=1))
+
+    # Phase 2: Querying
 
     # Read the query from the user
     query_text = st.text_input(
@@ -81,8 +81,14 @@ def query_system():
         # Initialize progress bar
         progress_bar = st.progress(0, text="Consultando corpus...")
 
+        # Get corpus from session state
+        corpus = st.session_state.corpus
+
         # Query the corpus
         queried_corpus = QueriedBM25Corpus(corpus, query_text, k=1.5, b=0.75)
+
+        # Save to session state
+        st.session_state.queried_corpus = queried_corpus
 
         # Update progress bar
         progress_bar.progress(20, text="Organizando documentos...")
@@ -98,17 +104,8 @@ def query_system():
         # Build the term frequency matrix
         tf_matrix = queried_corpus.get_tf_matrix()
 
-        # Update progress bar
-        progress_bar.progress(60, text="Buscando documentos similares...")
-
-        # Get similarities for each document
-        similar_docs_list: list[list[Document]] = []
-        for document in documents_by_score:
-            doc_index = queried_corpus.get_corpus().get_document_index_by_id(
-                document.get_document().get_id()
-            )
-            similar_docs = queried_corpus.get_similar_documents(tf_matrix[doc_index])
-            similar_docs_list.append(similar_docs)
+        # Save to session state
+        st.session_state.tf_matrix = tf_matrix
 
         # Update progress bar
         progress_bar.progress(80, text="Generando snippets...")
@@ -127,7 +124,6 @@ def query_system():
 
     # Phase 3: Displaying Results
 
-    # Display the results
     st.write(f"Se han encontrado {len(documents_by_score)} resultados:")
 
     if documents_by_score:
@@ -140,15 +136,47 @@ def query_system():
                 # Snippet of the document
                 st.write(f"{snippets[i]}")
 
-                # Similar documents
-                st.write(
-                    f"Similares: {
-                    ', '.join([doc.get_name() for doc in similar_docs_list[i]][1:5])
-                }"
+                # Select button to view more details
+                st.button(
+                    "Ver",
+                    key=f"view_{i}",
+                    on_click=lambda: st.session_state.update(
+                        selected_document=document, step=3
+                    ),
                 )
+
                 st.markdown("---")
     else:
         st.write("No se encontraron resultados.")
+
+
+# Phase 4: Document Info
+def document_info():
+    st.button("← Volver", on_click=lambda: st.session_state.update(step=2))
+
+    st.write("**Información del documento**")
+
+    # Get the necessary objects from session state
+    selected_document: QueriedDocument = st.session_state.selected_document
+    queried_corpus: QueriedBM25Corpus = st.session_state.queried_corpus
+
+    # Get similarities for current document
+    doc_index = queried_corpus.get_corpus().get_document_index_by_id(
+        selected_document.get_document().get_id()
+    )
+    similar_docs = queried_corpus.get_similar_documents(
+        st.session_state.tf_matrix[doc_index]
+    )
+
+    # Document Info
+    st.write(f"**Nombre:** {selected_document.get_document().get_name()}")
+
+    # Similar documents
+    st.write(
+        f"**Similares:** {
+        ', '.join([doc.get_name() for doc in similar_docs][1:5])
+    }"
+    )
 
 
 if st.session_state.step == 1:
@@ -156,3 +184,6 @@ if st.session_state.step == 1:
 
 if st.session_state.step == 2:
     query_system()
+
+if st.session_state.step == 3:
+    document_info()
