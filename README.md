@@ -13,4 +13,4 @@
 - [ ] Check how are words with accents being handled by the tokenizer # Gerardo
 - [ ] Add more aggresive tokenization # Gerardo
 - [x] Change UI to select a document # Gerardo
-- [ ] Improve performance of get_similar_documents # Gerardo
+- [x] Improve performance of get_similar_documents # Gerardo
