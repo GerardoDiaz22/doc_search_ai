@@ -68,6 +68,10 @@ class Document:
         except Exception as e:
             print(f"An error occurred: {e}")
 
+    def get_file(self) -> str:
+        with open(self.path_to_document, "rb") as file:
+            return file.read()
+
     @staticmethod
     def _read_text_from_pdf(path_to_pdf: str) -> str | None:
         try:

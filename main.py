@@ -1,4 +1,4 @@
-from classes import Corpus, QueriedBM25Corpus, QueriedDocument
+from classes import Corpus, Document, QueriedBM25Corpus, QueriedDocument
 import streamlit as st
 
 # Initialize session state
@@ -69,8 +69,11 @@ def query_system():
     # Phase 2: Querying
 
     # Read the query from the user
+    st.markdown("### Buscar:")
     query_text = st.text_input(
-        "Buscar:", placeholder="Ingrese un término de búsqueda..."
+        label="",
+        placeholder="Ingrese un término de búsqueda...",
+        label_visibility="collapsed",
     )
 
     if not query_text:
@@ -127,25 +130,24 @@ def query_system():
     st.write(f"Se han encontrado {len(documents_by_score)} resultados:")
 
     if documents_by_score:
-        for i, document in enumerate(documents_by_score):
-            with st.container():
+        for i, queried_document in enumerate(documents_by_score):
+            with st.container(border=True):
+                # Get the document
+                document: Document = queried_document.get_document()
+
                 # Name of the document
-                st.write(f"**{document.get_document().get_name()}**")
-                # File path of the document
-                st.write(f"{document.get_document().get_path()}")
+                st.write(f"**{document.get_name()}**")
+
                 # Snippet of the document
                 st.write(f"{snippets[i]}")
 
                 # Select button to view more details
                 st.button(
                     "Ver",
-                    key=f"view_{i}",
-                    on_click=lambda: st.session_state.update(
-                        selected_document=document, step=3
-                    ),
+                    key=f"{document.get_id()}",
+                    on_click=go_to_document_info,
+                    args=(document,),
                 )
-
-                st.markdown("---")
     else:
         st.write("No se encontraron resultados.")
 
@@ -154,29 +156,57 @@ def query_system():
 def document_info():
     st.button("← Volver", on_click=lambda: st.session_state.update(step=2))
 
-    st.write("**Información del documento**")
-
     # Get the necessary objects from session state
-    selected_document: QueriedDocument = st.session_state.selected_document
+    selected_document: Document = st.session_state.selected_document
     queried_corpus: QueriedBM25Corpus = st.session_state.queried_corpus
+
+    # Document Info
+    st.subheader("Información del Documento")
+
+    with st.container(border=True):
+        st.markdown("#### Nombre")
+        st.write(selected_document.get_name())
+
+        st.markdown("#### Ruta")
+        st.write(selected_document.get_path())
+
+        st.markdown("#### Texto")
+        with st.container(border=True):
+            st.write(f"{selected_document.get_text()[:400]}...")
+
+        st.divider()
+
+        st.download_button(
+            "Descargar Documento",
+            data=selected_document.get_file(),
+            file_name=selected_document.get_name() + ".pdf",
+            mime="application/pdf",
+        )
 
     # Get similarities for current document
     doc_index = queried_corpus.get_corpus().get_document_index_by_id(
-        selected_document.get_document().get_id()
+        selected_document.get_id()
     )
     similar_docs = queried_corpus.get_similar_documents(
         st.session_state.tf_matrix[doc_index]
     )
 
-    # Document Info
-    st.write(f"**Nombre:** {selected_document.get_document().get_name()}")
-
     # Similar documents
-    st.write(
-        f"**Similares:** {
-        ', '.join([doc.get_name() for doc in similar_docs][1:5])
-    }"
-    )
+    st.subheader("Documentos Similares")
+    for document in similar_docs[1:5]:
+        with st.container(border=True):
+            st.write(f"**{document.get_name()}**")
+            st.button(
+                "Ver",
+                key=document.get_id(),
+                on_click=go_to_document_info,
+                args=(document,),
+            )
+
+
+def go_to_document_info(document: Document):
+    st.session_state.selected_document = document
+    st.session_state.step = 3
 
 
 if st.session_state.step == 1:
