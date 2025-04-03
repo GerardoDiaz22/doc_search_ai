@@ -1,73 +1,72 @@
 from classes import Corpus, QueriedBM25Corpus, QueriedDocument, Document
 import streamlit as st
 
+# Initialize session state
+if "step" not in st.session_state:
+    st.session_state.step = 1
 
-def main():
-    st.title("Buscador de Documentos")
+st.title("Buscador de Documentos")
 
-    # Initialize session state
-    if "setup_complete" not in st.session_state:
-        st.session_state.setup_complete = False
 
-    # Phase 1: Initialization
+# Phase 1: Initialization
+def initial_config():
+    st.write("**Configuración del sistema**")
+    st.write(
+        "Por favor, haga clic en el botón para iniciar la configuración del sistema. Puede tardar unos minutos dependiendo de la cantidad de documentos que tenga."
+    )
+    if st.button("Iniciar Configuración"):
+        # Create a status container and progress bar
+        with st.status(
+            "Configurando sistema, por favor espere...", expanded=True
+        ) as status:
+            # Initialize progress bar
+            progress_bar = st.progress(0, text="Inicializando corpus...")
 
-    if not st.session_state.setup_complete:
-        st.write("**Configuración del sistema**")
-        st.write(
-            "Por favor, haga clic en el botón para iniciar la configuración del sistema. Puede tardar unos minutos dependiendo de la cantidad de documentos que tenga."
-        )
-        if st.button("Iniciar Configuración"):
-            # Create a status container and progress bar
-            with st.status(
-                "Configurando sistema, por favor espere...", expanded=True
-            ) as status:
-                # Initialize progress bar
-                progress_bar = st.progress(0, text="Inicializando corpus...")
+            # Initialize the corpus
+            corpus = Corpus()
 
-                # Initialize the corpus
-                corpus = Corpus()
+            # Store corpus in session state
+            st.session_state.corpus = corpus
 
-                # Store corpus in session state
-                st.session_state.corpus = corpus
+            # Update progress bar
+            progress_bar.progress(25, text="Leyendo documentos...")
 
-                # Update progress bar
-                progress_bar.progress(25, text="Leyendo documentos...")
+            # Add documents to the corpus
+            corpus.add_docs_from_directory("docs/")
 
-                # Add documents to the corpus
-                corpus.add_docs_from_directory("docs/")
+            # Setup texts for the documents
+            corpus.setup_document_texts()
 
-                # Setup texts for the documents
-                corpus.setup_document_texts()
+            # Update progress bar
+            progress_bar.progress(50, text="Procesando documentos...")
 
-                # Update progress bar
-                progress_bar.progress(50, text="Procesando documentos...")
+            # Setup tokens for the documents
+            corpus.setup_document_tokens()
 
-                # Setup tokens for the documents
-                corpus.setup_document_tokens()
+            # Update progress bar
+            progress_bar.progress(75, text="Escribiendo documentos...")
 
-                # Update progress bar
-                progress_bar.progress(75, text="Escribiendo documentos...")
+            # Write docs to directory
+            corpus.write_docs_to_directory("output/")
 
-                # Write docs to directory
-                corpus.write_docs_to_directory("output/")
+            # HERE WOULD BE THE CLUSTERING PHASE
+            # REMEMBER TO UPDATE THE PROGRESS BAR
 
-                # HERE WOULD BE THE CLUSTERING PHASE
-                # REMEMBER TO UPDATE THE PROGRESS BAR
+            # Complete setup
+            progress_bar.progress(100, text="Configuración completada!")
+            status.update(
+                label="Configuración completada!", state="complete", expanded=False
+            )
 
-                # Complete setup
-                progress_bar.progress(100, text="Configuración completada!")
-                status.update(
-                    label="Configuración completada!", state="complete", expanded=False
-                )
+        # Move to the next step
+        st.session_state.step = 2
+        st.rerun()
 
-            st.session_state.setup_complete = True
-            st.rerun()
-        return
 
+# Phase 2: Querying
+def query_system():
     # Get corpus from session state
     corpus = st.session_state.corpus
-
-    # Phase 2: Querying
 
     # Read the query from the user
     query_text = st.text_input(
@@ -152,5 +151,8 @@ def main():
         st.write("No se encontraron resultados.")
 
 
-if __name__ == "__main__":
-    main()
+if st.session_state.step == 1:
+    initial_config()
+
+if st.session_state.step == 2:
+    query_system()
