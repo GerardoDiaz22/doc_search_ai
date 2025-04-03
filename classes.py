@@ -337,13 +337,17 @@ class QueriedBM25Corpus:
 
     def get_cosine_similarities(self, query_vector: list[float]) -> list[float]:
         try:
-            cosine_similarities = []
-            for doc_vector in self.get_tf_matrix():
-                similarity = np.dot(query_vector, doc_vector) / (
-                    np.linalg.norm(query_vector) * np.linalg.norm(doc_vector)
-                )
-                cosine_similarities.append(similarity)
-            return cosine_similarities
+            # Convert lists to NumPy arrays for vectorized operations
+            query_array = np.array(query_vector, dtype=np.float32)
+            tf_matrix = np.array(self.get_tf_matrix(), dtype=np.float32)
+
+            # Compute operations
+            cosine_similarities = np.dot(tf_matrix, query_array) / (
+                np.linalg.norm(query_array) * np.linalg.norm(tf_matrix, axis=1)
+            )
+
+            # Convert the result back to a list and return
+            return cosine_similarities.tolist()
         except Exception as e:
             print(f"An error occurred: {e}")
             return None
