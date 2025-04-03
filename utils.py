@@ -1,5 +1,7 @@
 import spacy
 import numpy as np
+from sklearn.cluster import KMeans
+from sklearn.metrics import silhouette_score
 
 # Load spaCy Spanish model
 nlp = spacy.load(
@@ -84,3 +86,12 @@ def reciprocal_rank(relevant_docs, retrieved_docs):
         if doc in relevant_docs:
             return 1 / (i + 1)
     return 0
+
+
+def get_optimal_k_clusters(matrix):
+    silhouette_scores = []
+    for k in range(2, 16):
+        k_means_model = KMeans(n_clusters=k, random_state=42, n_init="auto")
+        clusters = k_means_model.fit_predict(matrix)
+        silhouette_scores.append((k, silhouette_score(matrix, clusters)))
+    return max(silhouette_scores, key=lambda x: x[1])[0]

@@ -2,6 +2,9 @@ from classes import Corpus, Document, QueriedBM25Corpus, QueriedDocument
 from utils import precision_at_k, recall_at_k, average_precision, reciprocal_rank
 import streamlit as st
 
+
+BM25_K = 1.5
+BM25_B = 0.75
 NUM_DOCUMENTS_OF_INTEREST = 5
 
 # Initialize session state
@@ -28,13 +31,13 @@ def initial_config():
             progress_bar = st.progress(0, text="Inicializando corpus...")
 
             # Initialize the corpus
-            corpus = Corpus()
+            corpus = Corpus(k=BM25_K, b=BM25_B)
 
             # Store corpus in session state
             st.session_state.corpus = corpus
 
             # Update progress bar
-            progress_bar.progress(25, text="Leyendo documentos...")
+            progress_bar.progress(10, text="Leyendo documentos...")
 
             # Add documents to the corpus
             corpus.add_docs_from_directory("docs/")
@@ -43,19 +46,31 @@ def initial_config():
             corpus.setup_document_texts()
 
             # Update progress bar
-            progress_bar.progress(50, text="Procesando documentos...")
+            progress_bar.progress(30, text="Procesando documentos...")
 
             # Setup tokens for the documents
             corpus.setup_document_tokens()
 
             # Update progress bar
-            progress_bar.progress(75, text="Escribiendo documentos...")
+            progress_bar.progress(45, text="Escribiendo documentos...")
 
             # Write docs to directory
             corpus.write_docs_to_directory("output/")
 
-            # HERE WOULD BE THE CLUSTERING PHASE
-            # REMEMBER TO UPDATE THE PROGRESS BAR
+            # Update progress bar
+            progress_bar.progress(60, text="Calculando matriz de frecuencia...")
+
+            # Build the term frequency matrix
+            bm25_matrix = corpus.get_bm25_matrix()
+
+            # Save to session state
+            st.session_state.bm25_matrix = bm25_matrix
+
+            # Update progress bar
+            progress_bar.progress(75, text="Calculando clusteres...")
+
+            # Cluster documents
+            corpus.cluster_documents()
 
             # Complete setup
             progress_bar.progress(100, text="Configuración completada!")
@@ -76,9 +91,9 @@ def query_system():
     # Read the query from the user
     st.markdown("### Buscar:")
     query_text = st.text_input(
-        label="",
+        label="Buscar:",
         placeholder="Ingrese un término de búsqueda...",
-        label_visibility="collapsed",
+        label_visibility="hidden",
     )
 
     if not query_text:
@@ -92,8 +107,11 @@ def query_system():
         # Get corpus from session state
         corpus = st.session_state.corpus
 
+        # Get the cluster for the query
+        cluster_id = corpus.predict_cluster_for_query(query_text)
+
         # Query the corpus
-        queried_corpus = QueriedBM25Corpus(corpus, query_text, k=1.5, b=0.75)
+        queried_corpus = QueriedBM25Corpus(corpus, query_text)
 
         # Save to session state
         st.session_state.queried_corpus = queried_corpus
@@ -105,15 +123,6 @@ def query_system():
         documents_by_score: list[QueriedDocument] = (
             queried_corpus.get_documents_by_score()
         )
-
-        # Update progress bar
-        progress_bar.progress(40, text="Calculando matriz de frecuencia...")
-
-        # Build the term frequency matrix
-        tf_matrix = queried_corpus.get_tf_matrix()
-
-        # Save to session state
-        st.session_state.tf_matrix = tf_matrix
 
         # Update progress bar
         progress_bar.progress(60, text="Definiendo pares de relevancia...")
@@ -200,7 +209,7 @@ def document_info():
         selected_document.get_id()
     )
     similar_docs = queried_corpus.get_similar_documents(
-        st.session_state.tf_matrix[doc_index]
+        st.session_state.bm25_matrix[doc_index]
     )[1 : NUM_DOCUMENTS_OF_INTEREST + 1]
 
     # Similar documents

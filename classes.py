@@ -3,8 +3,9 @@ import os
 import numpy as np
 import uuid
 import shutil
-from utils import tokenize_and_clean_text, bm25_score
+from utils import tokenize_and_clean_text, bm25_score, get_optimal_k_clusters
 from collections import defaultdict, Counter
+from sklearn.cluster import KMeans
 
 
 class Document:
@@ -17,6 +18,7 @@ class Document:
         self.id: str = str(uuid.uuid4())
         self.text: str | None = None
         self.tokens: list[str] | None = None
+        self.cluster_id: int | None = None
 
     def get_path(self) -> str:
         return self.path_to_document
@@ -72,6 +74,12 @@ class Document:
         with open(self.path_to_document, "rb") as file:
             return file.read()
 
+    def get_cluster_id(self) -> int | None:
+        return self.cluster_id
+
+    def set_cluster_id(self, cluster_id: int) -> None:
+        self.cluster_id = cluster_id
+
     @staticmethod
     def _read_text_from_pdf(path_to_pdf: str) -> str | None:
         try:
@@ -107,9 +115,13 @@ class Document:
 
 
 class Corpus:
-    def __init__(self):
+    def __init__(self, k: float, b: float):
         self.documents: list[Document] = []
         self.tokens: list[list[str]] | None = None
+        self.k: float = k
+        self.b: float = b
+        self.bm25_matrix = None
+        self.k_means_model = None
 
     def add_document(self, document: Document) -> None:
         self.documents.append(document)
@@ -204,88 +216,12 @@ class Corpus:
             print(f"An error occurred: {e}")
             return None
 
-
-class QueriedDocument:
-    def __init__(
-        self,
-        document: Document,
-        score: float,
-        token_score_pairs: list[tuple[str, float]],
-    ):
-        self.document: Document = document
-        self.score: float = score
-        self.token_score_pairs: list[tuple[str, float]] = token_score_pairs
-
-    def get_document(self) -> Document:
-        return self.document
-
-    def get_score(self) -> float:
-        return self.score
-
-    def get_token_score_pairs(self) -> list[tuple[str, float]]:
-        return self.token_score_pairs
-
-
-class QueriedBM25Corpus:
-    def __init__(self, corpus: Corpus, query_text: str, k: float, b: float):
-        self.query_text: str = query_text
-        self.query_tokens: list[str] | None = None
-        self.k: float = k
-        self.b: float = b
-        self.corpus: Corpus = corpus
-        self.queried_documents: list[QueriedDocument] = []
-        self.tf_matrix = None
-        self._assign_bm25_scores()
-
-    def get_corpus(self) -> Corpus:
-        return self.corpus
-
-    def _assign_bm25_scores(self) -> float:
-        avg_doc_length = self.corpus.get_avg_doc_length()
-
-        for document in self.corpus.documents:
-            document_score = 0
-            token_score_pairs = []
-            for token in self.get_query_tokens():
-                token_score = bm25_score(
-                    token,
-                    document.get_tokens(),
-                    self.corpus.get_tokens_by_docs(),
-                    avg_doc_length,
-                    self.k,
-                    self.b,
-                )
-                document_score += token_score
-                token_score_pairs.append((token, token_score))
-            self.queried_documents.append(
-                QueriedDocument(document, document_score, token_score_pairs)
-            )
-
-    def get_query_tokens(self) -> list[str]:
+    def get_bm25_matrix(self) -> list[list[float]] | None:
         try:
-            if self.query_tokens is None:
-                self.query_tokens = tokenize_and_clean_text(self.query_text)
-            return self.query_tokens
-        except Exception as e:
-            print(f"An error occurred: {e}")
-            return None
-
-    def get_documents_by_score(self) -> list[QueriedDocument]:
-        # Sort the documents by score in descending order
-        return sorted(
-            self.queried_documents,
-            key=lambda queried_doc: queried_doc.get_score(),
-            reverse=True,
-        )
-
-    def get_tf_matrix(self) -> list[list[float]] | None:
-        try:
-            if self.tf_matrix is None:
-                corpus_tokens_by_docs: list[list[str]] = (
-                    self.corpus.get_tokens_by_docs()
-                )
+            if self.bm25_matrix is None:
+                corpus_tokens_by_docs: list[list[str]] = self.get_tokens_by_docs()
                 num_docs = len(corpus_tokens_by_docs)
-                avg_doc_length = self.corpus.get_avg_doc_length()
+                avg_doc_length = self.get_avg_doc_length()
 
                 # Map each token to an array of indices of documents containing it
                 token_to_doc_indices = defaultdict(set)
@@ -333,17 +269,149 @@ class QueriedBM25Corpus:
 
                 bm25_matrix = idf_vector * ((tf_matrix * (self.k + 1)) / denominator)
 
-                self.tf_matrix = bm25_matrix.tolist()
-            return self.tf_matrix
+                self.bm25_matrix = bm25_matrix.tolist()
+            return self.bm25_matrix
         except Exception as e:
             print(f"An error occurred: {e}")
             return None
+
+    def cluster_documents(self) -> None:
+        try:
+            # Get the optimal number of clusters using silhouette score
+            optimal_k = get_optimal_k_clusters(self.get_bm25_matrix())
+
+            # Set up the k-means model
+            k_means_model = KMeans(n_clusters=optimal_k)
+
+            # Run k-means clustering on the TF matrix
+            k_means_model.fit(self.get_bm25_matrix())
+            clusters = k_means_model.labels_
+
+            # Assign cluster IDs
+            documents: list[Document] = self.get_documents()
+
+            for i, cluster_id in enumerate(clusters):
+                documents[i].set_cluster_id(cluster_id)
+
+            # Save k-means model
+            self.k_means_model = k_means_model
+
+        except Exception as e:
+            print(f"An error occurred: {e}")
+            return None
+
+    def vectorize_text(self, text: str) -> list[float] | None:
+        try:
+            # Clean and tokenize the text
+            query_vector = tokenize_and_clean_text(text)
+
+            # Get the initial vector from the BM25 matrix
+            tf_vector = np.zeros(len(self.get_bm25_matrix()[0]), dtype=np.float32)
+
+            # Map tokens to their indices
+            token_to_index = {
+                token: index for index, token in enumerate(self.get_bm25_matrix()[0])
+            }
+
+            # Count the occurrences of each token in the query vector
+            for token in query_vector:
+                if token in token_to_index:
+                    tf_vector[token_to_index[token]] += 1
+
+            return tf_vector.tolist()
+        except Exception as e:
+            print(f"An error occurred: {e}")
+            return None
+
+    def predict_cluster_for_query(self, query_text: str) -> int | None:
+        try:
+            # Vectorize the query and reshape it
+            query_vector = np.array(self.vectorize_text(query_text)).reshape(1, -1)
+
+            # Predict the cluster for the query
+            return self.k_means_model.predict(query_vector)[0]
+        except Exception as e:
+            print(f"An error occurred: {e}")
+            return None
+
+
+class QueriedDocument:
+    def __init__(
+        self,
+        document: Document,
+        score: float,
+        token_score_pairs: list[tuple[str, float]],
+    ):
+        self.document: Document = document
+        self.score: float = score
+        self.token_score_pairs: list[tuple[str, float]] = token_score_pairs
+
+    def get_document(self) -> Document:
+        return self.document
+
+    def get_score(self) -> float:
+        return self.score
+
+    def get_token_score_pairs(self) -> list[tuple[str, float]]:
+        return self.token_score_pairs
+
+
+class QueriedBM25Corpus:
+    def __init__(self, corpus: Corpus, query_text: str):
+        self.query_text: str = query_text
+        self.query_tokens: list[str] | None = None
+        self.corpus: Corpus = corpus
+        self.queried_documents: list[QueriedDocument] = []
+        self.cluster_id: int | None = None
+
+        self._assign_bm25_scores()
+
+    def get_corpus(self) -> Corpus:
+        return self.corpus
+
+    def _assign_bm25_scores(self) -> float:
+        avg_doc_length = self.corpus.get_avg_doc_length()
+
+        for document in self.corpus.documents:
+            document_score = 0
+            token_score_pairs = []
+            for token in self.get_query_tokens():
+                token_score = bm25_score(
+                    token,
+                    document.get_tokens(),
+                    self.corpus.get_tokens_by_docs(),
+                    avg_doc_length,
+                    self.corpus.k,
+                    self.corpus.b,
+                )
+                document_score += token_score
+                token_score_pairs.append((token, token_score))
+            self.queried_documents.append(
+                QueriedDocument(document, document_score, token_score_pairs)
+            )
+
+    def get_query_tokens(self) -> list[str]:
+        try:
+            if self.query_tokens is None:
+                self.query_tokens = tokenize_and_clean_text(self.query_text)
+            return self.query_tokens
+        except Exception as e:
+            print(f"An error occurred: {e}")
+            return None
+
+    def get_documents_by_score(self) -> list[QueriedDocument]:
+        # Sort the documents by score in descending order
+        return sorted(
+            self.queried_documents,
+            key=lambda queried_doc: queried_doc.get_score(),
+            reverse=True,
+        )
 
     def get_cosine_similarities(self, query_vector: list[float]) -> list[float]:
         try:
             # Convert lists to NumPy arrays for vectorized operations
             query_array = np.array(query_vector, dtype=np.float32)
-            tf_matrix = np.array(self.get_tf_matrix(), dtype=np.float32)
+            tf_matrix = np.array(self.corpus.get_bm25_matrix(), dtype=np.float32)
 
             # Compute operations
             cosine_similarities = np.dot(tf_matrix, query_array) / (

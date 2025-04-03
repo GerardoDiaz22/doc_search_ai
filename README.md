@@ -4,7 +4,7 @@
 - [x] Change the QueriedDocument to save the (token, score) pair # Gerardo
 - [x] Fix get_snippet_from_doc_by_score to actually use the query # Gerardo
 - [x] Add initialization step before showing the search bar # Gerardo
-- [ ] Add clustering with k-means # Jose
+- [x] Add clustering with k-means # Jose
 - [x] Improve UI
 - [x] Add metrics to evaluate the performance of the model # Gerardo
 - [ ] Write report document # Jose
@@ -14,3 +14,4 @@
 - [ ] Add more aggresive tokenization # Gerardo
 - [x] Change UI to select a document # Gerardo
 - [x] Improve performance of get_similar_documents # Gerardo
+- [ ] Add clustering as filter for the search
