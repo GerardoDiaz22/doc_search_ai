@@ -53,3 +53,34 @@ def bm25_score(
     idf_score = idf(term, documents)
     theta = len(document) / avg_doc_length
     return idf_score * (tf_score * (k + 1)) / (tf_score + k * (1 - b + b * theta))
+
+
+def precision_at_k(relevant_docs, retrieved_docs, k):
+    top_k = retrieved_docs[:k]
+    relevant_in_top = len(set(top_k) & set(relevant_docs))
+    return relevant_in_top / k
+
+
+def recall_at_k(relevant_docs, retrieved_docs, k):
+    top_k = retrieved_docs[:k]
+    relevant_in_top = len(set(top_k) & set(relevant_docs))
+    return relevant_in_top / len(relevant_docs) if relevant_docs else 0
+
+
+def average_precision(relevant_docs, retrieved_docs):
+    relevant_indices = [
+        i + 1 for i, doc in enumerate(retrieved_docs) if doc in relevant_docs
+    ]
+    return (
+        sum(precision_at_k(relevant_docs, retrieved_docs, i) for i in relevant_indices)
+        / len(relevant_docs)
+        if relevant_docs
+        else 0
+    )
+
+
+def reciprocal_rank(relevant_docs, retrieved_docs):
+    for i, doc in enumerate(retrieved_docs):
+        if doc in relevant_docs:
+            return 1 / (i + 1)
+    return 0

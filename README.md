@@ -6,7 +6,7 @@
 - [x] Add initialization step before showing the search bar # Gerardo
 - [ ] Add clustering with k-means # Jose
 - [x] Improve UI
-- [ ] Add metrics to evaluate the performance of the model # Gerardo
+- [x] Add metrics to evaluate the performance of the model # Gerardo
 - [ ] Write report document # Jose
 - [ ] Add env variable handling for dev and prod # Gerardo
 - [ ] Add clean text before lemmatization to the document class # Gerardo

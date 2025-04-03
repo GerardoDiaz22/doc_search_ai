@@ -1,9 +1,14 @@
 from classes import Corpus, Document, QueriedBM25Corpus, QueriedDocument
+from utils import precision_at_k, recall_at_k, average_precision, reciprocal_rank
 import streamlit as st
+
+NUM_DOCUMENTS_OF_INTEREST = 5
 
 # Initialize session state
 if "step" not in st.session_state:
     st.session_state.step = 1
+if "relevance_feedback" not in st.session_state:
+    st.session_state.relevance_feedback = {}
 
 st.title("Buscador de Documentos")
 
@@ -111,6 +116,13 @@ def query_system():
         st.session_state.tf_matrix = tf_matrix
 
         # Update progress bar
+        progress_bar.progress(60, text="Definiendo pares de relevancia...")
+        for document in documents_by_score:
+            st.session_state.relevance_feedback[document.get_document().get_id()] = [
+                False
+            ] * NUM_DOCUMENTS_OF_INTEREST
+
+        # Update progress bar
         progress_bar.progress(80, text="Generando snippets...")
 
         # Generate snippets for the documents
@@ -144,7 +156,7 @@ def query_system():
                 # Select button to view more details
                 st.button(
                     "Ver",
-                    key=f"{document.get_id()}",
+                    key=f"go_to_{document.get_id()}",
                     on_click=go_to_document_info,
                     args=(document,),
                 )
@@ -189,19 +201,94 @@ def document_info():
     )
     similar_docs = queried_corpus.get_similar_documents(
         st.session_state.tf_matrix[doc_index]
-    )
+    )[1 : NUM_DOCUMENTS_OF_INTEREST + 1]
 
     # Similar documents
     st.subheader("Documentos Similares")
-    for document in similar_docs[1:5]:
+
+    relevant_docs = [None] * NUM_DOCUMENTS_OF_INTEREST
+
+    for i, document in enumerate(similar_docs):
         with st.container(border=True):
-            st.write(f"**{document.get_name()}**")
-            st.button(
-                "Ver",
-                key=document.get_id(),
-                on_click=go_to_document_info,
-                args=(document,),
-            )
+            col1, col2 = st.columns([2, 1])
+
+            # Show the document
+            with col1:
+                st.write(f"**{document.get_name()}**")
+                st.button(
+                    "Ver",
+                    key=f"go_to_{document.get_id()}",
+                    on_click=go_to_document_info,
+                    args=(document,),
+                )
+
+            # Check for relevance
+            with col2:
+                is_relevant = st.checkbox(
+                    "Es relevante?",
+                    value=st.session_state.relevance_feedback[
+                        selected_document.get_id()
+                    ][i],
+                    key=f"relevance_{document.get_id()}",
+                    on_change=update_relevance_feedback,
+                    args=(
+                        selected_document.get_id(),
+                        i,
+                    ),
+                )
+                if is_relevant:
+                    relevant_docs[i] = document
+                else:
+                    relevant_docs[i] = None
+
+    # Metric Evaluation
+    st.subheader("Evaluación de Métricas")
+
+    filtered_docs = list(filter(lambda x: x is not None, relevant_docs))
+
+    precision = precision_at_k(
+        filtered_docs,
+        similar_docs,
+        NUM_DOCUMENTS_OF_INTEREST,
+    )
+
+    recall = recall_at_k(
+        filtered_docs,
+        similar_docs,
+        NUM_DOCUMENTS_OF_INTEREST,
+    )
+
+    average_precision_value = round(
+        average_precision(
+            filtered_docs,
+            similar_docs,
+        ),
+        2,
+    )
+
+    reciprocal_rank_value = reciprocal_rank(
+        filtered_docs,
+        similar_docs,
+    )
+
+    a, b = st.columns(2)
+    c, d = st.columns(2)
+    e, f = st.columns(2)
+
+    a.metric("Recomendados", len(similar_docs), border=True)
+    b.metric("Relevantes", len(filtered_docs), border=True)
+
+    c.metric("Precisión@k", precision, border=True)
+    d.metric("Recall@k", recall, border=True)
+
+    e.metric("Precisión Media", average_precision_value, border=True)
+    f.metric("Rango Reciproco", reciprocal_rank_value, border=True)
+
+
+def update_relevance_feedback(document_id, index):
+    st.session_state.relevance_feedback[document_id][index] = (
+        not st.session_state.relevance_feedback[document_id][index]
+    )
 
 
 def go_to_document_info(document: Document):
