@@ -1,0 +1,7 @@
+numpy==2.2.4
+pandas==2.2.3
+plotly==6.0.1
+pymupdf==1.25.5
+scikit_learn==1.6.1
+spacy==3.8.4
+streamlit==1.42.2

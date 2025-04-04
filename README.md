@@ -15,3 +15,4 @@
 - [x] Change UI to select a document # Gerardo
 - [x] Improve performance of get_similar_documents # Gerardo
 - [ ] Add clustering as filter for the search
+- [x] Add requirements.txt # Gerardo
