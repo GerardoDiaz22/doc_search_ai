@@ -1,3 +1,13 @@
+# How to run the app
+- Install the requirements
+```bash
+pip install -r requirements.txt
+```
+- Run the app
+```bash
+streamlit run main.py
+```
+
 # Roadmap
 - [x] Add a dataset for testing # Gerardo
 - [x] Change all the by_name handlings to use by_index or by_id # Gerardo
@@ -14,5 +24,6 @@
 - [ ] Add more aggresive tokenization # Gerardo
 - [x] Change UI to select a document # Gerardo
 - [x] Improve performance of get_similar_documents # Gerardo
-- [ ] Add clustering as filter for the search
+- [x] Add clustering as filter for the search
 - [x] Add requirements.txt # Gerardo
+- [ ] Add steps to run the app in the README # Gerardo
