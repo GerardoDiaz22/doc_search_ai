@@ -20,6 +20,10 @@ if "relevance_feedback" not in st.session_state:
     st.session_state.relevance_feedback = {}
 
 
+def go_back_step():
+    st.session_state.update(step=st.session_state.step - 1)
+
+
 # Phase 1: Initialization
 def initial_config():
     st.markdown("### Configuración del sistema")
@@ -125,19 +129,22 @@ def initial_config():
 
 
 def query_system():
-    st.button("← Volver", on_click=lambda: st.session_state.update(step=1))
-
     col1, col2 = st.columns([2, 1])
 
     # Phase 2: Querying
     with col1:
         # Read the query from the user
         st.markdown("### Buscar:")
-        query_text = st.text_input(
-            label="Buscar:",
-            placeholder="Ingrese un término de búsqueda...",
-            label_visibility="collapsed",
-        )
+
+        with st.container():
+            query_text = st.text_input(
+                label="Buscar:",
+                placeholder="Ingrese un término de búsqueda...",
+                label_visibility="collapsed",
+            )
+            filter_by_cluster = st.checkbox(
+                "Filtrar por cluster", value=True, key="filter_by_cluster"
+            )
 
         if query_text:
             with st.status("Procesando consulta...", expanded=True) as status:
@@ -171,11 +178,14 @@ def query_system():
                 progress_bar.progress(40, text="Filtrando documentos...")
 
                 # Filter documents by cluster ID
-                filtered_documents_by_score: list[QueriedDocument] = (
-                    QueriedBM25Corpus.filter_documents_by_cluster_id(
-                        documents_by_score, cluster_id
+                if filter_by_cluster:
+                    filtered_documents_by_score: list[QueriedDocument] = (
+                        QueriedBM25Corpus.filter_documents_by_cluster_id(
+                            documents_by_score, cluster_id
+                        )
                     )
-                )
+                else:
+                    filtered_documents_by_score = documents_by_score
 
                 # Update progress bar
                 progress_bar.progress(60, text="Definiendo pares de relevancia...")
@@ -255,8 +265,6 @@ def query_system():
 
 # Phase 4: Document Info
 def document_info():
-    st.button("← Volver", on_click=lambda: st.session_state.update(step=2))
-
     # Get the necessary objects from session state
     selected_document: Document = st.session_state.selected_document
     queried_corpus: QueriedBM25Corpus = st.session_state.queried_corpus
@@ -388,6 +396,8 @@ def go_to_document_info(document: Document):
 _, main_col, side_col = st.columns([1, 4, 1])
 
 with main_col:
+    if st.session_state.step > 1:
+        st.button("← Volver", on_click=go_back_step)
     st.title("Buscador de Documentos")
 
     if st.session_state.step == 1:
