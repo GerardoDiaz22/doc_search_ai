@@ -16,6 +16,7 @@ from sklearn.preprocessing import Normalizer
 from sklearn.pipeline import Pipeline
 
 NUM_COMPONENTS = 5
+NUM_NEIGHBORS = 5
 
 
 class Document:
@@ -387,11 +388,40 @@ class Corpus:
             query_vector = np.array(self.vectorize_text(query_text)).reshape(1, -1)
 
             # Normalize and reduce the dimensionality of the query vector
-            query_vector = self.pipeline.transform(query_vector)
-            query_vector = query_vector.reshape(1, -1)
+            reduced_query_vector = self.pipeline.transform(query_vector)
 
-            # Predict the cluster for the query
-            return str(self.k_means_model.predict(query_vector)[0])
+            # Get the reduced matrix
+            docs_matrix_reduced = np.array(self.get_reduced_matrix())
+
+            # TODO: Use the one in QueriedBM25Corpus
+            from sklearn.metrics.pairwise import cosine_similarity
+
+            # Compute cosine similarities between the query vector and the document vectors
+            similarities = cosine_similarity(reduced_query_vector, docs_matrix_reduced)[
+                0
+            ]
+
+            # Get the indices of the nearest neighbors
+            nearest_doc_indices = np.argsort(similarities)[-NUM_NEIGHBORS:]
+
+            # Obtener los cluster IDs de los documentos vecinos
+            neighbor_clusters = [
+                self.documents[i].get_cluster_id() for i in nearest_doc_indices
+            ]
+
+            # Encontrar el cluster más frecuente entre los vecinos
+            most_common_cluster = Counter(neighbor_clusters).most_common(1)
+
+            if not most_common_cluster:
+                print(
+                    "Advertencia: No se encontraron clusters para los documentos vecinos"
+                )
+                if nearest_doc_indices.size > 0:
+                    return self.documents[nearest_doc_indices[-1]].get_cluster_id()
+                return None
+
+            # Get the most common cluster ID
+            return most_common_cluster[0][0]
         except Exception as e:
             print(f"An error occurred: {e}")
             return None
