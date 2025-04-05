@@ -9,7 +9,7 @@ nlp = spacy.load(
 )
 
 # Configuration the nlp model
-nlp.max_length = 2000000
+nlp.max_length = 5000000
 
 
 def tokenize_and_clean_text(text: str) -> list[str]:
@@ -91,7 +91,7 @@ def reciprocal_rank(relevant_docs, retrieved_docs):
 def get_optimal_k_clusters(matrix):
     silhouette_scores = []
     for k in range(2, 16):
-        k_means_model = KMeans(n_clusters=k, random_state=42, n_init="auto")
+        k_means_model = KMeans(n_clusters=k, random_state=42, n_init=20)
         clusters = k_means_model.fit_predict(matrix)
         silhouette_scores.append((k, silhouette_score(matrix, clusters)))
     return max(silhouette_scores, key=lambda x: x[1])[0]
