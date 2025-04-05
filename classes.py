@@ -482,3 +482,14 @@ class QueriedBM25Corpus:
         except Exception as e:
             print(f"An error occurred: {e}")
             return None
+
+    @staticmethod
+    def filter_documents_by_cluster_id(
+        documents: list[QueriedDocument], cluster_id: str
+    ) -> list[QueriedDocument]:
+        return list(
+            filter(
+                lambda x: x.get_document().get_cluster_id() == cluster_id,
+                documents,
+            )
+        )
