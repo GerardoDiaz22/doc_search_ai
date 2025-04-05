@@ -3,9 +3,19 @@ import os
 import numpy as np
 import uuid
 import shutil
-from utils import tokenize_and_clean_text, bm25_score, get_optimal_k_clusters
+from utils import (
+    tokenize_and_clean_text,
+    bm25_score,
+    compute_optimal_k_clusters_silhouette,
+    compute_optimal_k_clusters_elbow,
+)
 from collections import defaultdict, Counter
 from sklearn.cluster import KMeans
+from sklearn.decomposition import TruncatedSVD
+from sklearn.preprocessing import Normalizer
+from sklearn.pipeline import Pipeline
+
+NUM_COMPONENTS = 5
 
 
 class Document:
@@ -18,7 +28,7 @@ class Document:
         self.id: str = str(uuid.uuid4())
         self.text: str | None = None
         self.tokens: list[str] | None = None
-        self.cluster_id: int | None = None
+        self.cluster_id: str | None = None
 
     def get_path(self) -> str:
         return self.path_to_document
@@ -74,10 +84,10 @@ class Document:
         with open(self.path_to_document, "rb") as file:
             return file.read()
 
-    def get_cluster_id(self) -> int | None:
+    def get_cluster_id(self) -> str | None:
         return self.cluster_id
 
-    def set_cluster_id(self, cluster_id: int) -> None:
+    def set_cluster_id(self, cluster_id: str) -> None:
         self.cluster_id = cluster_id
 
     @staticmethod
@@ -121,7 +131,12 @@ class Corpus:
         self.k: float = k
         self.b: float = b
         self.bm25_matrix = None
+        self.reduced_matrix = None
         self.k_means_model = None
+        self.pipeline = None
+        self.vocabulary: list[str] | None = None
+        self.token_to_index: dict[str, int] | None = None
+        self.idf_vector: np.ndarray | None = None
 
     def add_document(self, document: Document) -> None:
         self.documents.append(document)
@@ -230,6 +245,8 @@ class Corpus:
                         token_to_doc_indices[token].add(index)
 
                 unique_corpus_tokens = sorted(token_to_doc_indices.keys())
+                self.vocabulary = unique_corpus_tokens
+
                 num_tokens = len(unique_corpus_tokens)
 
                 # Calculate the IDF vector using the BM25 Okapi formula
@@ -240,6 +257,7 @@ class Corpus:
                 idf_vector = np.log(
                     ((num_docs - df_vector + 0.5) / (df_vector + 0.5)) + 1
                 )
+                self.idf_vector = idf_vector
 
                 # Calculate the TF matrix
                 tf_matrix = np.zeros((num_docs, num_tokens), dtype=np.float32)
@@ -248,6 +266,7 @@ class Corpus:
                 token_to_index = {
                     token: index for index, token in enumerate(unique_corpus_tokens)
                 }
+                self.token_to_index = token_to_index
 
                 # Fill the TF matrix with token counts
                 for index, tokens in enumerate(corpus_tokens_by_docs):
@@ -275,23 +294,55 @@ class Corpus:
             print(f"An error occurred: {e}")
             return None
 
+    def get_reduced_matrix(self) -> list[list[float]] | None:
+        try:
+            if self.reduced_matrix is None:
+                if self.bm25_matrix is None:
+                    self.get_bm25_matrix()
+
+                # Convert the BM25 matrix to a NumPy array
+                bm25_matrix = np.array(self.bm25_matrix, dtype=np.float32)
+
+                # Normalize and reduce the dimensionality of the matrix
+                normalizer = Normalizer(norm="l2")
+                svd = TruncatedSVD(n_components=NUM_COMPONENTS, random_state=42)
+
+                pipeline = Pipeline([("normalize", normalizer), ("svd", svd)])
+
+                # Fit the pipeline
+                fitted_pipeline = pipeline.fit(bm25_matrix)
+                reduced_matrix = fitted_pipeline.transform(bm25_matrix)
+
+                # Store the fitted pipeline for later use
+                self.pipeline = fitted_pipeline
+
+                self.reduced_matrix = reduced_matrix.tolist()
+            return self.reduced_matrix
+        except Exception as e:
+            print(f"An error occurred: {e}")
+            return None
+
     def cluster_documents(self) -> None:
         try:
-            # Get the optimal number of clusters using silhouette score
-            optimal_k = get_optimal_k_clusters(self.get_bm25_matrix())
+            # Get the optimal number of clusters
+            optimal_k = compute_optimal_k_clusters_elbow(self.get_reduced_matrix())
+
+            """ optimal_k = compute_optimal_k_clusters_silhouette(
+                self.get_reduced_matrix()
+            ) """
 
             # Set up the k-means model
-            k_means_model = KMeans(n_clusters=optimal_k)
+            k_means_model = KMeans(n_clusters=optimal_k, random_state=42, n_init=20)
 
             # Run k-means clustering on the TF matrix
-            k_means_model.fit(self.get_bm25_matrix())
+            k_means_model.fit(self.get_reduced_matrix())
             clusters = k_means_model.labels_
 
             # Assign cluster IDs
             documents: list[Document] = self.get_documents()
 
             for i, cluster_id in enumerate(clusters):
-                documents[i].set_cluster_id(cluster_id)
+                documents[i].set_cluster_id(str(cluster_id))
 
             # Save k-means model
             self.k_means_model = k_means_model
@@ -302,34 +353,45 @@ class Corpus:
 
     def vectorize_text(self, text: str) -> list[float] | None:
         try:
+            avg_dl = self.get_avg_doc_length()
+
             # Clean and tokenize the text
-            query_vector = tokenize_and_clean_text(text)
+            query_tokens = tokenize_and_clean_text(text)
+            query_len = len(query_tokens)
 
-            # Get the initial vector from the BM25 matrix
-            tf_vector = np.zeros(len(self.get_bm25_matrix()[0]), dtype=np.float32)
+            query_tf_counts = Counter(query_tokens)
+            num_corpus_tokens = len(self.vocabulary)
+            query_bm25_vector = np.zeros(num_corpus_tokens, dtype=np.float32)
 
-            # Map tokens to their indices
-            token_to_index = {
-                token: index for index, token in enumerate(self.get_bm25_matrix()[0])
-            }
+            # Query length normalization factor part
+            query_norm_factor_base = self.k * (1 - self.b + self.b * query_len / avg_dl)
 
-            # Count the occurrences of each token in the query vector
-            for token in query_vector:
-                if token in token_to_index:
-                    tf_vector[token_to_index[token]] += 1
+            # Build BM25 vector based on corpus vocabulary
+            for token, index in self.token_to_index.items():
+                tf = query_tf_counts.get(token, 0)  # TF of token in query
 
-            return tf_vector.tolist()
+                if tf > 0:
+                    idf = self.idf_vector[index]  # Corpus IDF
+                    numerator = tf * (self.k + 1)
+                    denominator = tf + query_norm_factor_base
+                    query_bm25_vector[index] = idf * (numerator / denominator)
+
+            return query_bm25_vector.tolist()
         except Exception as e:
             print(f"An error occurred: {e}")
             return None
 
-    def predict_cluster_for_query(self, query_text: str) -> int | None:
+    def predict_cluster_for_query(self, query_text: str) -> str | None:
         try:
             # Vectorize the query and reshape it
             query_vector = np.array(self.vectorize_text(query_text)).reshape(1, -1)
 
+            # Normalize and reduce the dimensionality of the query vector
+            query_vector = self.pipeline.transform(query_vector)
+            query_vector = query_vector.reshape(1, -1)
+
             # Predict the cluster for the query
-            return self.k_means_model.predict(query_vector)[0]
+            return str(self.k_means_model.predict(query_vector)[0])
         except Exception as e:
             print(f"An error occurred: {e}")
             return None
@@ -362,7 +424,7 @@ class QueriedBM25Corpus:
         self.query_tokens: list[str] | None = None
         self.corpus: Corpus = corpus
         self.queried_documents: list[QueriedDocument] = []
-        self.cluster_id: int | None = None
+        self.cluster_id: str | None = None
 
         self._assign_bm25_scores()
 

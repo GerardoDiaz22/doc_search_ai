@@ -88,10 +88,29 @@ def reciprocal_rank(relevant_docs, retrieved_docs):
     return 0
 
 
-def get_optimal_k_clusters(matrix):
+def compute_optimal_k_clusters_silhouette(matrix):
     silhouette_scores = []
     for k in range(2, 16):
         k_means_model = KMeans(n_clusters=k, random_state=42, n_init=20)
         clusters = k_means_model.fit_predict(matrix)
         silhouette_scores.append((k, silhouette_score(matrix, clusters)))
     return max(silhouette_scores, key=lambda x: x[1])[0]
+
+
+def compute_optimal_k_clusters_elbow(matrix):
+    inertia = []
+    for k in range(2, 16):
+        k_means_model = KMeans(n_clusters=k, random_state=42, n_init=20)
+        k_means_model.fit(matrix)
+        inertia.append(k_means_model.inertia_)
+
+    elbow_point = None
+    for i in range(1, len(inertia) - 1):
+        if inertia[i] - inertia[i - 1] > inertia[i + 1] - inertia[i]:
+            # +2 because we started from k=2
+            elbow_point = i + 2
+            break
+    # Default to the last point if no elbow is found
+    if elbow_point is None:
+        elbow_point = len(inertia) + 1
+    return elbow_point
